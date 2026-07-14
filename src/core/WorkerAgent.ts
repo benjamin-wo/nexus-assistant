@@ -152,8 +152,13 @@ Format requirements:
         }
       } else {
         // No tool call: ReAct loop has completed and returned the final answer
-        // Clean out instructions/thoughts and return the final text block response
-        const cleanResponse = completion.replace(/<thought>[\s\S]*?<\/thought>/gi, "").trim();
+        // Clean out thoughts, tool calls, and tool responses to ensure a clean final text block
+        const cleanResponse = completion
+          .replace(/<thought>[\s\S]*?<\/thought>/gi, "")
+          .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, "")
+          .replace(/<tool_response>[\s\S]*?<\/tool_response>/gi, "")
+          .replace(/<toolresponse>[\s\S]*?<\/toolresponse>/gi, "")
+          .trim();
         return cleanResponse;
       }
     }
