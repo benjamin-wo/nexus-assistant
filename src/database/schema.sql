@@ -75,3 +75,43 @@
 --   created_at TIMESTAMP NOT NULL,
 --   completed_at TIMESTAMP
 -- );
+
+-- 5. Expenses Table
+-- PostgreSQL:
+-- CREATE TABLE expenses (
+--   id SERIAL PRIMARY KEY,
+--   chat_id TEXT NOT NULL,
+--   amount DOUBLE PRECISION NOT NULL,
+--   category TEXT NOT NULL,
+--   description TEXT NOT NULL,
+--   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- );
+--
+-- SQLite:
+-- CREATE TABLE expenses (
+--   id INTEGER PRIMARY KEY AUTOINCREMENT,
+--   chat_id TEXT NOT NULL,
+--   amount REAL NOT NULL,
+--   category TEXT NOT NULL,
+--   description TEXT NOT NULL,
+--   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+-- );
+
+-- 6. Research Notes Table
+-- PostgreSQL:
+-- CREATE TABLE research_notes (
+--   id SERIAL PRIMARY KEY,
+--   chat_id TEXT NOT NULL,
+--   title TEXT NOT NULL,
+--   content TEXT NOT NULL,
+--   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- );
+--
+-- SQLite:
+-- CREATE TABLE research_notes (
+--   id INTEGER PRIMARY KEY AUTOINCREMENT,
+--   chat_id TEXT NOT NULL,
+--   title TEXT NOT NULL,
+--   content TEXT NOT NULL,
+--   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+-- );

@@ -3,6 +3,8 @@ import { Orchestrator } from "./core/Orchestrator";
 import { SkillRegistry } from "./core/SkillRegistry";
 import { Scheduler } from "./services/Scheduler";
 import { TaskRegistry } from "./core/TaskRegistry";
+import { StorageService } from "./database/Storage";
+import { join } from "path";
 
 function escapeHtml(text: string): string {
   return text
@@ -83,10 +85,48 @@ async function main() {
     }
   );
 
+  function getWebAppUrl(chatId: string): string {
+    const domain = process.env.RAILWAY_STATIC_URL;
+    if (domain) {
+      return `https://${domain}?chatId=${chatId}`;
+    }
+    return `http://localhost:3000?chatId=${chatId}`;
+  }
+
   // 4. Handle incoming text messages
   bot.on("message:text", async (ctx) => {
     const chatId = String(ctx.chat.id);
-    const text = ctx.message.text;
+    const text = ctx.message.text.trim();
+
+    // Check if the user is asking to open the dashboard/expenses/notes
+    const isExpenses = text.startsWith("/expenses") || text.toLowerCase().includes("show expense") || text.toLowerCase().includes("expense dashboard");
+    const isNotes = text.startsWith("/notes") || text.toLowerCase().includes("show note") || text.toLowerCase().includes("notes library");
+
+    if (isExpenses) {
+      const url = getWebAppUrl(chatId);
+      await ctx.reply("Here is your <b>Personal Expense Tracker</b> dashboard:", {
+        parse_mode: "HTML",
+        reply_markup: {
+          inline_keyboard: [[
+            { text: "📊 Open Expense Dashboard", web_app: { url } }
+          ]]
+        }
+      });
+      return;
+    }
+
+    if (isNotes) {
+      const url = `${getWebAppUrl(chatId)}&tab=notes`;
+      await ctx.reply("Here is your <b>Research Notes</b> library:", {
+        parse_mode: "HTML",
+        reply_markup: {
+          inline_keyboard: [[
+            { text: "📝 Open Research Notes", web_app: { url } }
+          ]]
+        }
+      });
+      return;
+    }
 
     // Send typing action to Telegram
     await ctx.replyWithChatAction("typing");
@@ -105,6 +145,102 @@ async function main() {
     console.error("[Telegram Global Bot Error]", err.error);
   });
 
+  // 6. Start Web Server using Bun.serve
+  const port = process.env.PORT || 3000;
+  Bun.serve({
+    port: Number(port),
+    async fetch(req) {
+      const url = new URL(req.url);
+      const storage = new StorageService();
+
+      try {
+        await storage.initialize();
+
+        // 1. GET /api/expenses?chatId=...
+        if (url.pathname === "/api/expenses" && req.method === "GET") {
+          const chatId = url.searchParams.get("chatId");
+          if (!chatId) return new Response("Missing chatId", { status: 400 });
+          const expenses = await storage.getExpenses(chatId);
+          return Response.json(expenses);
+        }
+
+        // 2. POST /api/expenses
+        if (url.pathname === "/api/expenses" && req.method === "POST") {
+          const body = await req.json() as any;
+          if (!body.chatId || !body.amount || !body.category || !body.description) {
+            return new Response("Missing fields", { status: 400 });
+          }
+          const id = await storage.createExpense({
+            chatId: body.chatId,
+            amount: Number(body.amount),
+            category: body.category,
+            description: body.description,
+          });
+          return Response.json({ success: true, id });
+        }
+
+        // 3. POST /api/expenses/delete
+        if (url.pathname === "/api/expenses/delete" && req.method === "POST") {
+          const body = await req.json() as any;
+          if (!body.id || !body.chatId) {
+            return new Response("Missing fields", { status: 400 });
+          }
+          await storage.deleteExpense(Number(body.id), body.chatId);
+          return Response.json({ success: true });
+        }
+
+        // 4. GET /api/notes?chatId=...
+        if (url.pathname === "/api/notes" && req.method === "GET") {
+          const chatId = url.searchParams.get("chatId");
+          if (!chatId) return new Response("Missing chatId", { status: 400 });
+          const notes = await storage.getResearchNotes(chatId);
+          return Response.json(notes);
+        }
+
+        // 5. POST /api/notes
+        if (url.pathname === "/api/notes" && req.method === "POST") {
+          const body = await req.json() as any;
+          if (!body.chatId || !body.title || !body.content) {
+            return new Response("Missing fields", { status: 400 });
+          }
+          const id = await storage.createResearchNote({
+            chatId: body.chatId,
+            title: body.title,
+            content: body.content,
+          });
+          return Response.json({ success: true, id });
+        }
+
+        // 6. POST /api/notes/delete
+        if (url.pathname === "/api/notes/delete" && req.method === "POST") {
+          const body = await req.json() as any;
+          if (!body.id || !body.chatId) {
+            return new Response("Missing fields", { status: 400 });
+          }
+          await storage.deleteResearchNote(Number(body.id), body.chatId);
+          return Response.json({ success: true });
+        }
+
+        // 7. Serve Static Files
+        let filePath = url.pathname;
+        if (filePath === "/") filePath = "/index.html";
+        const publicPath = join(process.cwd(), "src", "public", filePath);
+        const file = Bun.file(publicPath);
+        if (await file.exists()) {
+          return new Response(file);
+        }
+
+        return new Response("Not Found", { status: 404 });
+      } catch (err: any) {
+        console.error("[Web Server Error]", err);
+        return new Response(`Server Error: ${err.message}`, { status: 500 });
+      } finally {
+        await storage.close();
+      }
+    }
+  });
+
+  console.log(`[Telegram] Web Server started on port ${port}`);
   console.log("[Telegram] Bot starting...");
   await bot.start();
 }

@@ -33,6 +33,23 @@ export interface TaskEntry {
   completedAt?: Date;
 }
 
+export interface Expense {
+  id?: number;
+  chatId: string;
+  amount: number;
+  category: string;
+  description: string;
+  createdAt?: Date;
+}
+
+export interface ResearchNote {
+  id?: number;
+  chatId: string;
+  title: string;
+  content: string;
+  createdAt?: Date;
+}
+
 export interface IStorage {
   initialize(): Promise<void>;
   saveMessage(chatId: string, message: Message): Promise<void>;
@@ -46,6 +63,12 @@ export interface IStorage {
   updateTaskStatus(taskId: string, status: TaskEntry["status"]): Promise<void>;
   getTask(taskId: string): Promise<TaskEntry | null>;
   getActiveTasks(chatId?: string): Promise<TaskEntry[]>;
+  createExpense(expense: Expense): Promise<number>;
+  getExpenses(chatId: string): Promise<Expense[]>;
+  deleteExpense(id: number, chatId: string): Promise<void>;
+  createResearchNote(note: ResearchNote): Promise<number>;
+  getResearchNotes(chatId: string): Promise<ResearchNote[]>;
+  deleteResearchNote(id: number, chatId: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -107,6 +130,23 @@ export class StorageService implements IStorage {
             created_at TIMESTAMP NOT NULL,
             completed_at TIMESTAMP
           );
+
+          CREATE TABLE IF NOT EXISTS expenses (
+            id SERIAL PRIMARY KEY,
+            chat_id TEXT NOT NULL,
+            amount DOUBLE PRECISION NOT NULL,
+            category TEXT NOT NULL,
+            description TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE TABLE IF NOT EXISTS research_notes (
+            id SERIAL PRIMARY KEY,
+            chat_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
         `);
       } finally {
         client.release();
@@ -155,6 +195,27 @@ export class StorageService implements IStorage {
           description TEXT NOT NULL,
           created_at DATETIME NOT NULL,
           completed_at DATETIME
+        );
+      `);
+
+      this.sqliteDb.run(`
+        CREATE TABLE IF NOT EXISTS expenses (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          chat_id TEXT NOT NULL,
+          amount REAL NOT NULL,
+          category TEXT NOT NULL,
+          description TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      this.sqliteDb.run(`
+        CREATE TABLE IF NOT EXISTS research_notes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          chat_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          content TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
       `);
     }
@@ -404,6 +465,124 @@ export class StorageService implements IStorage {
       }));
     }
     return [];
+  }
+
+  async createExpense(expense: Expense): Promise<number> {
+    if (this.isPostgres && this.pgPool) {
+      const res = await this.pgPool.query(
+        "INSERT INTO expenses (chat_id, amount, category, description) VALUES ($1, $2, $3, $4) RETURNING id",
+        [expense.chatId, expense.amount, expense.category, expense.description]
+      );
+      return res.rows[0].id;
+    } else if (this.sqliteDb) {
+      const res = this.sqliteDb
+        .prepare(
+          "INSERT INTO expenses (chat_id, amount, category, description) VALUES (?, ?, ?, ?) RETURNING id"
+        )
+        .get(expense.chatId, expense.amount, expense.category, expense.description) as any;
+      return res.id;
+    }
+    return 0;
+  }
+
+  async getExpenses(chatId: string): Promise<Expense[]> {
+    if (this.isPostgres && this.pgPool) {
+      const res = await this.pgPool.query(
+        "SELECT id, chat_id, amount, category, description, created_at FROM expenses WHERE chat_id = $1 ORDER BY id DESC",
+        [chatId]
+      );
+      return res.rows.map((row: any) => ({
+        id: row.id,
+        chatId: row.chat_id,
+        amount: Number(row.amount),
+        category: row.category,
+        description: row.description,
+        createdAt: new Date(row.created_at),
+      }));
+    } else if (this.sqliteDb) {
+      const rows = this.sqliteDb
+        .prepare(
+          "SELECT id, chat_id, amount, category, description, created_at FROM expenses WHERE chat_id = ? ORDER BY id DESC"
+        )
+        .all(chatId) as any[];
+      return rows.map((row) => ({
+        id: row.id,
+        chatId: row.chat_id,
+        amount: Number(row.amount),
+        category: row.category,
+        description: row.description,
+        createdAt: new Date(row.created_at),
+      }));
+    }
+    return [];
+  }
+
+  async deleteExpense(id: number, chatId: string): Promise<void> {
+    if (this.isPostgres && this.pgPool) {
+      await this.pgPool.query("DELETE FROM expenses WHERE id = $1 AND chat_id = $2", [id, chatId]);
+    } else if (this.sqliteDb) {
+      this.sqliteDb
+        .prepare("DELETE FROM expenses WHERE id = ? AND chat_id = ?")
+        .run(id, chatId);
+    }
+  }
+
+  async createResearchNote(note: ResearchNote): Promise<number> {
+    if (this.isPostgres && this.pgPool) {
+      const res = await this.pgPool.query(
+        "INSERT INTO research_notes (chat_id, title, content) VALUES ($1, $2, $3) RETURNING id",
+        [note.chatId, note.title, note.content]
+      );
+      return res.rows[0].id;
+    } else if (this.sqliteDb) {
+      const res = this.sqliteDb
+        .prepare(
+          "INSERT INTO research_notes (chat_id, title, content) VALUES (?, ?, ?) RETURNING id"
+        )
+        .get(note.chatId, note.title, note.content) as any;
+      return res.id;
+    }
+    return 0;
+  }
+
+  async getResearchNotes(chatId: string): Promise<ResearchNote[]> {
+    if (this.isPostgres && this.pgPool) {
+      const res = await this.pgPool.query(
+        "SELECT id, chat_id, title, content, created_at FROM research_notes WHERE chat_id = $1 ORDER BY id DESC",
+        [chatId]
+      );
+      return res.rows.map((row: any) => ({
+        id: row.id,
+        chatId: row.chat_id,
+        title: row.title,
+        content: row.content,
+        createdAt: new Date(row.created_at),
+      }));
+    } else if (this.sqliteDb) {
+      const rows = this.sqliteDb
+        .prepare(
+          "SELECT id, chat_id, title, content, created_at FROM research_notes WHERE chat_id = ? ORDER BY id DESC"
+        )
+        .all(chatId) as any[];
+      return rows.map((row) => ({
+        id: row.id,
+        chatId: row.chat_id,
+        title: row.title,
+        content: row.content,
+        createdAt: new Date(row.created_at),
+      }));
+    }
+    return [];
+  }
+
+  async deleteResearchNote(id: number, chatId: string): Promise<void> {
+    if (this.isPostgres && this.pgPool) {
+      await this.pgPool.query("DELETE FROM research_notes WHERE id = $1 AND chat_id = $2", [id, chatId]);
+    } else if (this.sqliteDb) {
+      this.sqliteDb
+        .prepare("DELETE FROM research_notes WHERE id = ? AND chat_id = ?")
+        .run(id, chatId);
+    }
   }
 
   async close(): Promise<void> {
