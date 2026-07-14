@@ -49,9 +49,23 @@ function init() {
     switchTab(tab);
   }
 
+  // Set default date to today
+  setDefaultDate();
+
   // Fetch initial data
   fetchExpenses();
   fetchNotes();
+}
+
+function setDefaultDate() {
+  const dateEl = document.getElementById("exp-date");
+  if (dateEl) {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    dateEl.value = `${yyyy}-${mm}-${dd}`;
+  }
 }
 
 // Switch navigation tabs
@@ -134,17 +148,19 @@ async function submitExpense(event) {
   const amount = parseFloat(document.getElementById("exp-amount").value);
   const category = document.getElementById("exp-category").value;
   const description = document.getElementById("exp-desc").value;
+  const date = document.getElementById("exp-date").value;
 
   try {
     const res = await fetch("/api/expenses", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chatId, amount, category, description })
+      body: JSON.stringify({ chatId, amount, category, description, date })
     });
     if (!res.ok) throw new Error("Failed to save expense");
     
     // Reset form and reload
     document.getElementById("expense-form").reset();
+    setDefaultDate();
     toggleForm("expense-form-wrapper");
     fetchExpenses();
     

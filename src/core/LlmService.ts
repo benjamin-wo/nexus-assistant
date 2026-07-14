@@ -14,6 +14,12 @@ export class LlmService {
   }
 
   async generateResponse(messages: Message[]): Promise<string> {
+    const hasMedia = messages.some((msg) => msg.media && msg.media.length > 0);
+    if (hasMedia) {
+      console.log("[LlmService] Media detected. Routing to Gemini...");
+      return this.callGemini(messages);
+    }
+
     switch (this.provider) {
       case "gemini":
         return this.callGemini(messages);
@@ -44,9 +50,31 @@ export class LlmService {
       } else {
         // Translate roles for Gemini compatibility (gemini expects 'user' or 'model')
         const role = msg.role === "assistant" ? "model" : "user";
+        
+        const parts: any[] = [];
+        if (msg.content) {
+          parts.push({ text: msg.content });
+        }
+        
+        if (msg.media) {
+          for (const m of msg.media) {
+            parts.push({
+              inlineData: {
+                mimeType: m.mimeType,
+                data: m.data,
+              },
+            });
+          }
+        }
+
+        // Gemini requires at least one part
+        if (parts.length === 0) {
+          parts.push({ text: "" });
+        }
+
         contents.push({
           role,
-          parts: [{ text: msg.content }],
+          parts,
         });
       }
     }

@@ -99,10 +99,10 @@ async function main() {
     return `http://localhost:3000?chatId=${chatId}`;
   }
 
-  // 4. Handle incoming text messages
-  bot.on("message:text", async (ctx) => {
+  // 4. Handle incoming messages (text, photos, voice notes)
+  bot.on("message", async (ctx) => {
     const chatId = String(ctx.chat.id);
-    const text = ctx.message.text.trim();
+    const text = (ctx.message.text || ctx.message.caption || "").trim();
 
     // Check if the user is asking to open the dashboard/expenses/notes
     const isExpenses = text.startsWith("/expenses") || text.toLowerCase().includes("show expense") || text.toLowerCase().includes("expense dashboard");
@@ -150,11 +150,68 @@ async function main() {
       return;
     }
 
+    // Resolve voice, photo, or audio attachments
+    let media: any[] | undefined = undefined;
+
+    if (ctx.message.photo) {
+      try {
+        const photo = ctx.message.photo[ctx.message.photo.length - 1]; // largest resolution
+        const file = await ctx.api.getFile(photo.file_id);
+        if (file.file_path) {
+          const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
+          const res = await fetch(fileUrl);
+          const buffer = await res.arrayBuffer();
+          media = [{
+            mimeType: "image/jpeg",
+            data: Buffer.from(buffer).toString("base64")
+          }];
+        }
+      } catch (err) {
+        console.error("[Telegram Media Fetch Error] Photo:", err);
+      }
+    } else if (ctx.message.voice) {
+      try {
+        const voice = ctx.message.voice;
+        const file = await ctx.api.getFile(voice.file_id);
+        if (file.file_path) {
+          const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
+          const res = await fetch(fileUrl);
+          const buffer = await res.arrayBuffer();
+          media = [{
+            mimeType: voice.mime_type || "audio/ogg",
+            data: Buffer.from(buffer).toString("base64")
+          }];
+        }
+      } catch (err) {
+        console.error("[Telegram Media Fetch Error] Voice:", err);
+      }
+    } else if (ctx.message.audio) {
+      try {
+        const audio = ctx.message.audio;
+        const file = await ctx.api.getFile(audio.file_id);
+        if (file.file_path) {
+          const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
+          const res = await fetch(fileUrl);
+          const buffer = await res.arrayBuffer();
+          media = [{
+            mimeType: audio.mime_type || "audio/mpeg",
+            data: Buffer.from(buffer).toString("base64")
+          }];
+        }
+      } catch (err) {
+        console.error("[Telegram Media Fetch Error] Audio:", err);
+      }
+    }
+
+    if (!text && !media) {
+      return; // Ignore empty / unsupported types
+    }
+
     // Send typing action to Telegram
     await ctx.replyWithChatAction("typing");
 
     try {
-      const response = await orchestrator.processMessage(chatId, text);
+      const response = await orchestrator.processMessage(chatId, text, media);
       await ctx.reply(markdownToHtml(response), { parse_mode: "HTML" });
     } catch (err: any) {
       console.error(`[Telegram Message Error] Chat: ${chatId}`, err);
@@ -197,6 +254,7 @@ async function main() {
             amount: Number(body.amount),
             category: body.category,
             description: body.description,
+            createdAt: body.date,
           });
           return Response.json({ success: true, id });
         }

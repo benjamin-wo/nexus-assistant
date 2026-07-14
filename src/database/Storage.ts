@@ -1,11 +1,17 @@
 import { Database } from "bun:sqlite";
 import pg from "pg";
 
+export interface MediaAttachment {
+  mimeType: string;
+  data: string; // Base64 encoded string
+}
+
 export interface Message {
   role: "user" | "assistant" | "system";
   content: string;
   subagent?: string;
   createdAt?: Date;
+  media?: MediaAttachment[];
 }
 
 export interface Reminder {
@@ -39,7 +45,7 @@ export interface Expense {
   amount: number;
   category: string;
   description: string;
-  createdAt?: Date;
+  createdAt?: Date | string;
 }
 
 export interface ResearchNote {
@@ -468,18 +474,22 @@ export class StorageService implements IStorage {
   }
 
   async createExpense(expense: Expense): Promise<number> {
+    const createdStr = expense.createdAt 
+      ? (expense.createdAt instanceof Date ? expense.createdAt.toISOString() : new Date(expense.createdAt).toISOString())
+      : new Date().toISOString();
+
     if (this.isPostgres && this.pgPool) {
       const res = await this.pgPool.query(
-        "INSERT INTO expenses (chat_id, amount, category, description) VALUES ($1, $2, $3, $4) RETURNING id",
-        [expense.chatId, expense.amount, expense.category, expense.description]
+        "INSERT INTO expenses (chat_id, amount, category, description, created_at) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+        [expense.chatId, expense.amount, expense.category, expense.description, createdStr]
       );
       return res.rows[0].id;
     } else if (this.sqliteDb) {
       const res = this.sqliteDb
         .prepare(
-          "INSERT INTO expenses (chat_id, amount, category, description) VALUES (?, ?, ?, ?) RETURNING id"
+          "INSERT INTO expenses (chat_id, amount, category, description, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id"
         )
-        .get(expense.chatId, expense.amount, expense.category, expense.description) as any;
+        .get(expense.chatId, expense.amount, expense.category, expense.description, createdStr) as any;
       return res.id;
     }
     return 0;

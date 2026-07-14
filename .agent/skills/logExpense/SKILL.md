@@ -13,6 +13,9 @@ parameters:
     description:
       type: string
       description: What the expense was for (e.g. Lunch at Subway).
+    date:
+      type: string
+      description: "Optional. Date of the transaction in YYYY-MM-DD format (e.g. 2026-07-13). Defaults to today if not provided."
   required:
     - amount
     - category

@@ -1,6 +1,6 @@
 import { StorageService } from "../../../src/database/Storage";
 
-export async function execute(args: { amount: number; category: string; description: string }, context?: any) {
+export async function execute(args: { amount: number; category: string; description: string; date?: string }, context?: any) {
   const chatId = context?.chatId || "cli_chat_session";
   const storage = new StorageService();
   await storage.initialize();
@@ -9,7 +9,9 @@ export async function execute(args: { amount: number; category: string; descript
     amount: args.amount,
     category: args.category,
     description: args.description,
+    createdAt: args.date,
   });
   await storage.close();
-  return { success: true, id, message: `Successfully logged expense of $${args.amount} under '${args.category}'` };
+  const dateMsg = args.date ? ` on ${args.date}` : "";
+  return { success: true, id, message: `Successfully logged expense of $${args.amount} under '${args.category}'${dateMsg}` };
 }

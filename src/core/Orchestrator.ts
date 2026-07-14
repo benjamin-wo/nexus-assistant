@@ -1,7 +1,7 @@
 import { join } from "path";
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
-import { StorageService, Message } from "../database/Storage";
+import { StorageService, Message, MediaAttachment } from "../database/Storage";
 import { LlmService } from "./LlmService";
 import { WorkerAgent } from "./WorkerAgent";
 import { TaskRegistry } from "./TaskRegistry";
@@ -13,7 +13,7 @@ export class Orchestrator {
     this.llmService = new LlmService();
   }
 
-  async processMessage(chatId: string, userText: string): Promise<string> {
+  async processMessage(chatId: string, userText: string, media?: MediaAttachment[]): Promise<string> {
     const storage = new StorageService();
     await storage.initialize();
 
@@ -63,7 +63,7 @@ export class Orchestrator {
       // Add current message to temporary history for classification
       const tempHistory: Message[] = [
         ...history,
-        { role: "user", content: userText },
+        { role: "user", content: userText, media },
       ];
 
       // 3. Load Router Instructions
@@ -117,7 +117,7 @@ export class Orchestrator {
 
         // Instantiate and run Worker
         const worker = new WorkerAgent(workerName, workerInstructionsWithContext, allowedSkills);
-        finalResponse = await worker.execute(history.concat({ role: "user", content: userText }), chatId);
+        finalResponse = await worker.execute(history.concat({ role: "user", content: userText, media }), chatId);
       } else {
         // Direct response from Router (greetings, direct answers, errors)
         finalResponse = routeResponse.replace(/<spawn>.*?<\/spawn>/gi, "").trim();
