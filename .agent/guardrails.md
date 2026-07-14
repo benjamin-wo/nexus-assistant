@@ -3,7 +3,7 @@
 To ensure safety, security, and consistent execution, all workers must respect the following guardrails:
 
 ## 1. File Access Limitations
-- You are only allowed to read, write, or list files within the workspace root (`/Users/bytedance/Desktop/hermes-world`).
+- You are only allowed to read, write, or list files within the current workspace root directory (which is resolved dynamically by the tools at runtime).
 - Never attempt to write files to system directories (e.g. `/etc`, `/usr`, `/tmp`, `/var`) or user config folders.
 - Any attempt to escape the workspace directory will trigger a sandbox security error.
 
