@@ -126,10 +126,11 @@ Format requirements:
             content: `<tool_response>${JSON.stringify(result)}</tool_response>`,
           });
         } catch (err: any) {
+          const safeMsg = (err.message || String(err)).replace(/"/g, "'").replace(/\n/g, " ");
           console.error(`[Tool Error] '${toolName}' failed:`, err.message);
           messages.push({
             role: "user",
-            content: `<tool_response>{"success": false, "error": "${err.message}"}</tool_response>`,
+            content: `<tool_response>{"success": false, "error": "${safeMsg}"}</tool_response>`,
           });
         }
       } else {

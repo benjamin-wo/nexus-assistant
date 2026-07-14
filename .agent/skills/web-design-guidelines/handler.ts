@@ -5,6 +5,10 @@ import { readFile } from "fs/promises";
 export async function execute(args: { targetFile: string }) {
   const { targetFile } = args;
 
+  if (!targetFile || typeof targetFile !== "string") {
+    throw new Error("Parameter 'targetFile' is required — provide the relative path to the file to audit (e.g. 'src/index.html').");
+  }
+
   // Resolve target file path relative to workspace and enforce security sandbox
   const workspaceRoot = process.cwd();
   const absolutePath = resolve(workspaceRoot, targetFile);

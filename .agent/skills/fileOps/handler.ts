@@ -9,6 +9,9 @@ export async function execute(args: {
 }) {
   const { operation, path, content } = args;
 
+  if (!operation) throw new Error("Parameter 'operation' is required (read | write | list).");
+  if (!path || typeof path !== "string") throw new Error("Parameter 'path' is required and must be a string.");
+
   const workspaceRoot = process.cwd();
   // Safe resolution: resolve absolute path, and prevent escaping directory using path traversal
   const targetPath = resolve(join(workspaceRoot, path));
