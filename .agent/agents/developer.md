@@ -21,3 +21,4 @@ You are the Developer Agent. Your sole responsibility is to create, code, and ho
 
 ## Available Skills
 - `createSkill`
+- `hostHtmlPage`

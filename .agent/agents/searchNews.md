@@ -24,3 +24,4 @@ You are a specialized News & Search agent. Your role is to search the web, scrap
 - `weather`
 - `saveResearchNote`
 - `getResearchNotes`
+- `hostHtmlPage`
