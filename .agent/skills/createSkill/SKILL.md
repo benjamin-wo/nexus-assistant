@@ -18,7 +18,7 @@ parameters:
       description: Markdown prompt instructions explaining how the model should behave when using this tool.
     codeContent:
       type: string
-      description: Executable TypeScript. Must export an async function named execute(args: any).
+      description: "Executable TypeScript. Must export an async function named execute(args: any)."
   required:
     - name
     - description
