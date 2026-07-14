@@ -44,4 +44,11 @@ Interpret creatively and make unexpected choices that feel genuinely designed fo
 **IMPORTANT**: Match implementation complexity to the aesthetic vision. Maximalist designs need elaborate code with extensive animations and effects. Minimalist or refined designs need restraint, precision, and careful attention to spacing, typography, and subtle details. Elegance comes from executing the vision well.
 
 
+
+## Interaction & Rich Media Protocols
+
+- **Interactive Components**: Every hosted page MUST feel alive and interactive. Use Vanilla JS to build tab switchers, search filter inputs, expandable FAQs/accordions, modal details popups, or hover-revealed details cards.
+- **Rich Visuals & Real Images**: DO NOT leave image placeholders or use blank spaces. Always embed high-quality, relevant images using Unsplash CDN links (e.g., \`https://images.unsplash.com/photo-<id>?auto=format&fit=crop&w=800&q=80\`). Choose appropriate Unsplash photo IDs matching the subject matter (e.g., specific ID for historical buildings, food, maps, etc.) to ensure the interface is visually spectacular.
+- **Micro-Animations**: Add entry animations (staggered transitions using \`animation-delay\` or \`@keyframes fade-in-up\`) so the UI loads elegantly. Use smooth scroll behaviors and reactive hover transitions on buttons and interactive elements.
+
 Remember: Claude is capable of extraordinary creative work. Don't hold back, show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
