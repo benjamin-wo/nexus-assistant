@@ -1,0 +1,77 @@
+-- Schema definitions for SQLite / PostgreSQL
+
+-- 1. Conversations History Table
+-- PostgreSQL:
+-- CREATE TABLE conversations (
+--   id SERIAL PRIMARY KEY,
+--   chat_id TEXT NOT NULL,
+--   role TEXT NOT NULL,
+--   content TEXT NOT NULL,
+--   subagent TEXT,
+--   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- );
+--
+-- SQLite:
+-- CREATE TABLE conversations (
+--   id INTEGER PRIMARY KEY AUTOINCREMENT,
+--   chat_id TEXT NOT NULL,
+--   role TEXT NOT NULL,
+--   content TEXT NOT NULL,
+--   subagent TEXT,
+--   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+-- );
+
+-- 2. Reminders Table
+-- PostgreSQL:
+-- CREATE TABLE reminders (
+--   id SERIAL PRIMARY KEY,
+--   chat_id TEXT NOT NULL,
+--   message TEXT NOT NULL,
+--   due_at TIMESTAMP NOT NULL,
+--   sent BOOLEAN DEFAULT FALSE,
+--   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- );
+--
+-- SQLite:
+-- CREATE TABLE reminders (
+--   id INTEGER PRIMARY KEY AUTOINCREMENT,
+--   chat_id TEXT NOT NULL,
+--   message TEXT NOT NULL,
+--   due_at DATETIME NOT NULL,
+--   sent BOOLEAN DEFAULT FALSE,
+--   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+-- );
+
+-- 3. Telemetry/Error Logs Table
+-- PostgreSQL:
+-- CREATE TABLE logs (
+--   id SERIAL PRIMARY KEY,
+--   category TEXT NOT NULL,
+--   message TEXT NOT NULL,
+--   details TEXT,
+--   duration_ms INTEGER,
+--   is_error BOOLEAN DEFAULT FALSE,
+--   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- );
+--
+-- SQLite:
+-- CREATE TABLE logs (
+--   id INTEGER PRIMARY KEY AUTOINCREMENT,
+--   category TEXT NOT NULL,
+--   message TEXT NOT NULL,
+--   details TEXT,
+--   duration_ms INTEGER,
+--   is_error BOOLEAN DEFAULT FALSE,
+--   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+-- );
+
+-- 4. Background Tasks Registry
+-- PostgreSQL / SQLite:
+-- CREATE TABLE tasks (
+--   task_id TEXT PRIMARY KEY,
+--   chat_id TEXT NOT NULL,
+--   status TEXT NOT NULL,
+--   description TEXT NOT NULL,
+--   created_at TIMESTAMP NOT NULL,
+--   completed_at TIMESTAMP
+-- );
