@@ -86,6 +86,12 @@ async function main() {
   );
 
   function getWebAppUrl(chatId: string): string {
+    if (process.env.WEBAPP_URL) {
+      const base = process.env.WEBAPP_URL.endsWith("/") 
+        ? process.env.WEBAPP_URL.slice(0, -1) 
+        : process.env.WEBAPP_URL;
+      return `${base}?chatId=${chatId}`;
+    }
     const domain = process.env.RAILWAY_STATIC_URL;
     if (domain) {
       return `https://${domain}?chatId=${chatId}`;
@@ -104,11 +110,14 @@ async function main() {
 
     if (isExpenses) {
       const url = getWebAppUrl(chatId);
+      const isHttps = url.startsWith("https://");
       await ctx.reply("Here is your <b>Personal Expense Tracker</b> dashboard:", {
         parse_mode: "HTML",
         reply_markup: {
           inline_keyboard: [[
-            { text: "📊 Open Expense Dashboard", web_app: { url } }
+            isHttps 
+              ? { text: "📊 Open Expense Dashboard", web_app: { url } }
+              : { text: "📊 Open Expense Dashboard", url }
           ]]
         }
       });
@@ -117,11 +126,14 @@ async function main() {
 
     if (isNotes) {
       const url = `${getWebAppUrl(chatId)}&tab=notes`;
+      const isHttps = url.startsWith("https://");
       await ctx.reply("Here is your <b>Research Notes</b> library:", {
         parse_mode: "HTML",
         reply_markup: {
           inline_keyboard: [[
-            { text: "📝 Open Research Notes", web_app: { url } }
+            isHttps 
+              ? { text: "📝 Open Research Notes", web_app: { url } }
+              : { text: "📝 Open Research Notes", url }
           ]]
         }
       });
