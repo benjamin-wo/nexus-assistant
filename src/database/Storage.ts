@@ -71,6 +71,7 @@ export interface IStorage {
   getPendingReminders(): Promise<Reminder[]>;
   markReminderSent(id: number): Promise<void>;
   logEvent(log: LogEntry): Promise<void>;
+  getRecentLogs(limit?: number): Promise<any[]>;
   createTask(task: TaskEntry): Promise<void>;
   updateTaskStatus(taskId: string, status: TaskEntry["status"]): Promise<void>;
   getTask(taskId: string): Promise<TaskEntry | null>;
@@ -389,6 +390,27 @@ export class StorageService implements IStorage {
           log.isError ? 1 : 0
         );
     }
+  }
+
+  async getRecentLogs(limit: number = 50): Promise<any[]> {
+    if (this.isPostgres && this.pgPool) {
+      const res = await this.pgPool.query(
+        "SELECT id, category, message, details, duration_ms as \"durationMs\", is_error as \"isError\", created_at as \"createdAt\" FROM logs ORDER BY created_at DESC, id DESC LIMIT $1",
+        [limit]
+      );
+      return res.rows;
+    } else if (this.sqliteDb) {
+      const rows = this.sqliteDb
+        .prepare(
+          "SELECT id, category, message, details, duration_ms as durationMs, is_error as isError, created_at as createdAt FROM logs ORDER BY created_at DESC, id DESC LIMIT ?"
+        )
+        .all(limit) as any[];
+      return rows.map((r) => ({
+        ...r,
+        isError: Boolean(r.isError),
+      }));
+    }
+    return [];
   }
 
   async createTask(task: TaskEntry): Promise<void> {
