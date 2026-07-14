@@ -91,8 +91,18 @@ Format requirements:
 
         try {
           const parsed = JSON.parse(rawJson);
-          toolName = parsed.name;
-          toolArgs = parsed.arguments || parsed.args || {};
+          toolName = parsed.name || parsed.tool || parsed.toolName || parsed.function?.name || "";
+          
+          let rawArgs = parsed.arguments || parsed.args || parsed.parameters || parsed.function?.arguments || {};
+          if (typeof rawArgs === "string") {
+            try {
+              toolArgs = JSON.parse(rawArgs);
+            } catch (_) {
+              toolArgs = rawArgs;
+            }
+          } else {
+            toolArgs = rawArgs;
+          }
         } catch (err: any) {
           console.warn(`[WorkerAgent] JSON parse error on tool call: ${rawJson}`);
           messages.push({
