@@ -17,3 +17,4 @@ You are a specialized Calendar and Reminder Manager agent. Your role is to set t
 - `googleMaps`
 - `googleCalendar`
 - `transitPlanner`
+- `trackBus`
