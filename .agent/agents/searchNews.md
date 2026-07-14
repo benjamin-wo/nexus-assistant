@@ -13,3 +13,4 @@ You are a specialized News & Search agent. Your role is to scrape websites, fetc
 - `webScraper`
 - `weather`
 - `saveResearchNote`
+- `getResearchNotes`

@@ -13,3 +13,4 @@ You are a specialized Financial Planner agent. Your role is to evaluate budgets,
 - `calculator`
 - `fileOps`
 - `logExpense`
+- `getExpenses`
