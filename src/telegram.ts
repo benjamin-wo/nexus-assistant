@@ -29,18 +29,18 @@ function markdownToHtml(markdown: string): string {
   // 3. Inline code: `code` -> <code>code</code>
   html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
 
-  // 4. Bold: **bold** -> <b>bold</b>
-  html = html.replace(/\*\*([\s\S]*?)\*\*/g, "<b>$1</b>");
-
-  // 5. Italic: *italic* -> <i>italic</i>
-  html = html.replace(/\*([\s\S]*?)\*/g, "<i>$1</i>");
-
-  // 6. Italic: _italic_ (only if it has a boundary)
-  html = html.replace(/(?<=^|\s|[.,!?;:])_([^_]+)_(?=$|\s|[.,!?;:])/g, "<i>$1</i>");
-
+  // 4. Bold: **bold** -> <b>bold</b> (enforce non-space inner boundaries, no nested asterisks)
+  html = html.replace(/(?<!\*)\*\*(?!\*)(?=\S)([\s\S]*?)(?<=\S)\*\*(?!\*)/g, "<b>$1</b>");
+ 
+  // 5. Italic: *italic* -> <i>italic</i> (enforce non-space boundaries to avoid matching bullet points)
+  html = html.replace(/(?<!\*)\*(?!\*)(?=\S)([\s\S]*?)(?<=\S)\*(?!\*)/g, "<i>$1</i>");
+ 
+  // 6. Italic: _italic_ -> <i>italic</i>
+  html = html.replace(/(?<!_)_(?!_)(?=\S)([\s\S]*?)(?<=\S)_(?!_)/g, "<i>$1</i>");
+ 
   // 7. Links: [text](url) -> <a href="$2">$1</a>
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
-
+ 
   return html;
 }
 
