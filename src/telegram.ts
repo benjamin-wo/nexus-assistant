@@ -88,6 +88,15 @@ async function main() {
     }
   );
 
+  // Register mid-task update callback (used by polling tasks like trackBus to push live messages)
+  TaskRegistry.getInstance().setUpdateCallback(async (chatId, message) => {
+    try {
+      await bot.api.sendMessage(chatId, markdownToHtml(message), { parse_mode: "HTML" });
+    } catch (err: any) {
+      console.error(`[Telegram Task Update] Failed to send live update to ${chatId}:`, err.message);
+    }
+  });
+
   function getWebAppUrl(chatId: string): string {
     if (process.env.WEBAPP_URL) {
       const base = process.env.WEBAPP_URL.endsWith("/") 
@@ -101,6 +110,24 @@ async function main() {
     }
     return `http://localhost:3000?chatId=${chatId}`;
   }
+
+  // 4a. Handle /cancel <taskId> to stop a running tracking session
+  bot.on("message", async (ctx, next) => {
+    const text = (ctx.message.text || "").trim();
+    if (text.startsWith("/cancel ")) {
+      const taskId = text.split(" ")[1]?.trim();
+      if (taskId) {
+        const cancelled = await TaskRegistry.getInstance().cancelTask(taskId);
+        if (cancelled) {
+          await ctx.reply(`✅ Tracking session <code>${taskId}</code> has been stopped.`, { parse_mode: "HTML" });
+        } else {
+          await ctx.reply(`⚠️ No active task found with ID <code>${taskId}</code>.`, { parse_mode: "HTML" });
+        }
+        return; // Don't forward to main handler
+      }
+    }
+    return next();
+  });
 
   // 4. Handle incoming messages (text, photos, voice notes)
   bot.on("message", async (ctx) => {

@@ -6,6 +6,9 @@ export class TaskRegistry {
   private onTaskCompletedCallback:
     | ((taskId: string, chatId: string, description: string, success: boolean, resultOrError: any) => Promise<void>)
     | null = null;
+  private onTaskUpdateCallback:
+    | ((chatId: string, message: string) => Promise<void>)
+    | null = null;
 
   private constructor() {}
 
@@ -20,6 +23,22 @@ export class TaskRegistry {
     callback: (taskId: string, chatId: string, description: string, success: boolean, resultOrError: any) => Promise<void>
   ) {
     this.onTaskCompletedCallback = callback;
+  }
+
+  /** Register a callback for mid-task live updates (e.g. Telegram push during polling loops) */
+  setUpdateCallback(callback: (chatId: string, message: string) => Promise<void>) {
+    this.onTaskUpdateCallback = callback;
+  }
+
+  /** Send a live update to the user's chat from inside a running task */
+  async sendUpdate(chatId: string, message: string): Promise<void> {
+    if (this.onTaskUpdateCallback) {
+      try {
+        await this.onTaskUpdateCallback(chatId, message);
+      } catch (err) {
+        console.error("[TaskRegistry] sendUpdate failed:", err);
+      }
+    }
   }
 
   generateTaskId(): string {
