@@ -93,7 +93,14 @@ Format requirements:
           const parsed = JSON.parse(rawJson);
           toolName = parsed.name || parsed.tool || parsed.toolName || parsed.function?.name || "";
           
-          let rawArgs = parsed.arguments || parsed.args || parsed.parameters || parsed.function?.arguments || {};
+          let rawArgs = parsed.arguments || parsed.args || parsed.parameters || parsed.function?.arguments;
+          
+          // If no nested arguments object is found, treat the top-level keys as parameters (excluding tool-calling metadata)
+          if (!rawArgs || (typeof rawArgs === "object" && Object.keys(rawArgs).length === 0)) {
+            const { name, tool, toolName, function: fnMeta, ...rest } = parsed;
+            rawArgs = rest;
+          }
+
           if (typeof rawArgs === "string") {
             try {
               toolArgs = JSON.parse(rawArgs);
