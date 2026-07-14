@@ -45,8 +45,20 @@ export class Orchestrator {
         return `⚠️ Task \`${taskId}\` was not found or is not running.`;
       }
 
-      // 2. Fetch Chat History
+      // 2. Fetch Chat History and personality/user context
       const history = await storage.getHistory(chatId, 15);
+      
+      const soulPath = join(process.cwd(), ".agent", "soul.md");
+      const userPath = join(process.cwd(), ".agent", "user.md");
+      let soulPrompt = "";
+      let userMemory = "";
+
+      if (existsSync(soulPath)) {
+        soulPrompt = `\n\n# Your Personality & Tone (Soul)\n${await readFile(soulPath, "utf-8")}`;
+      }
+      if (existsSync(userPath)) {
+        userMemory = `\n\n# User Memory & Preferences\n${await readFile(userPath, "utf-8")}`;
+      }
 
       // Add current message to temporary history for classification
       const tempHistory: Message[] = [
@@ -60,10 +72,11 @@ export class Orchestrator {
         throw new Error("Orchestrator instruction profile (.agent/orchestrator.md) is missing.");
       }
       const routerInstructions = await readFile(routerPath, "utf-8");
+      const routerInstructionsWithContext = `${routerInstructions}${soulPrompt}${userMemory}`;
 
       // Prepend router instructions to system prompt
       const classificationMessages: Message[] = [
-        { role: "system", content: routerInstructions },
+        { role: "system", content: routerInstructionsWithContext },
         ...tempHistory,
       ];
 
@@ -99,8 +112,11 @@ export class Orchestrator {
 
         console.log(`[Orchestrator] Allowed skills parsed for ${workerName}:`, allowedSkills);
 
+        // Prepend soul and user memory to worker instructions so they carry over
+        const workerInstructionsWithContext = `${workerMd}${soulPrompt}${userMemory}`;
+
         // Instantiate and run Worker
-        const worker = new WorkerAgent(workerName, workerMd, allowedSkills);
+        const worker = new WorkerAgent(workerName, workerInstructionsWithContext, allowedSkills);
         finalResponse = await worker.execute(history.concat({ role: "user", content: userText }), chatId);
       } else {
         // Direct response from Router (greetings, direct answers, errors)
