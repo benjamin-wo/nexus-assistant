@@ -4,6 +4,41 @@ import { SkillRegistry } from "./core/SkillRegistry";
 import { Scheduler } from "./services/Scheduler";
 import { TaskRegistry } from "./core/TaskRegistry";
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function markdownToHtml(markdown: string): string {
+  // 1. Escape HTML entities
+  let html = escapeHtml(markdown);
+
+  // 2. Code blocks: ```code``` -> <pre><code>code</code></pre>
+  html = html.replace(/```([\s\S]*?)```/g, (match, code) => {
+    const lines = code.split("\n");
+    if (lines.length > 0 && /^[a-zA-Z0-9_-]+$/.test(lines[0].trim())) {
+      lines.shift();
+    }
+    return `<pre><code>${lines.join("\n").trim()}</code></pre>`;
+  });
+
+  // 3. Inline code: `code` -> <code>code</code>
+  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+
+  // 4. Bold: **bold** -> <b>bold</b>
+  html = html.replace(/\*\*([\s\S]*?)\*\*/g, "<b>$1</b>");
+
+  // 5. Italic: *italic* -> <i>italic</i>
+  html = html.replace(/\*([\s\S]*?)\*/g, "<i>$1</i>");
+
+  // 6. Italic: _italic_ (only if it has a boundary)
+  html = html.replace(/(?<=^|\s|[.,!?;:])_([^_]+)_(?=$|\s|[.,!?;:])/g, "<i>$1</i>");
+
+  return html;
+}
+
 async function main() {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
@@ -25,7 +60,7 @@ async function main() {
   // 2. Start Scheduler (Secretary alert callback routes directly to Telegram Chat ID)
   scheduler.start(async (chatId, message) => {
     try {
-      await bot.api.sendMessage(chatId, message, { parse_mode: "Markdown" });
+      await bot.api.sendMessage(chatId, markdownToHtml(message), { parse_mode: "HTML" });
     } catch (err: any) {
       console.error(`[Telegram Scheduler Alert] Failed to send to ${chatId}:`, err.message);
     }
@@ -41,7 +76,7 @@ async function main() {
         } else {
           text = `❌ **Task Failed!**\nTask ID: \`${taskId}\`\nDescription: ${description}\n\n*Error:*\n${resultOrError}`;
         }
-        await bot.api.sendMessage(chatId, text, { parse_mode: "Markdown" });
+        await bot.api.sendMessage(chatId, markdownToHtml(text), { parse_mode: "HTML" });
       } catch (err: any) {
         console.error(`[Telegram Task Callback] Failed to alert ${chatId}:`, err.message);
       }
@@ -58,7 +93,7 @@ async function main() {
 
     try {
       const response = await orchestrator.processMessage(chatId, text);
-      await ctx.reply(response, { parse_mode: "Markdown" });
+      await ctx.reply(markdownToHtml(response), { parse_mode: "HTML" });
     } catch (err: any) {
       console.error(`[Telegram Message Error] Chat: ${chatId}`, err);
       await ctx.reply(`❌ An execution error occurred: ${err.message}`);
