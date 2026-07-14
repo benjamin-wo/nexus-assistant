@@ -1,4 +1,4 @@
-import { getAccessToken } from "../../../src/core/googleAuth";
+import { getAccessToken, getGoogleAuthUrl } from "../../../src/core/googleAuth";
 
 export async function execute(
   args: {
@@ -36,7 +36,14 @@ export async function execute(
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (!res.ok) throw new Error(`Gmail API failed with status ${res.status}: ${await res.text()}`);
+
+      if (!res.ok) {
+        const errText = await res.text();
+        if (res.status === 401 || res.status === 403) {
+          return { success: false, error: "NOT_AUTHENTICATED", authUrl: getGoogleAuthUrl(chatId) };
+        }
+        throw new Error(`Gmail API failed with status ${res.status}: ${errText}`);
+      }
       
       const data = await res.json() as any;
       const messages = data.messages || [];
@@ -74,7 +81,14 @@ export async function execute(
       const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (!res.ok) throw new Error(`Gmail API failed with status ${res.status}: ${await res.text()}`);
+
+      if (!res.ok) {
+        const errText = await res.text();
+        if (res.status === 401 || res.status === 403) {
+          return { success: false, error: "NOT_AUTHENTICATED", authUrl: getGoogleAuthUrl(chatId) };
+        }
+        throw new Error(`Gmail API failed with status ${res.status}: ${errText}`);
+      }
       
       const detail = await res.json() as any;
       const headers = detail.payload?.headers || [];
@@ -130,7 +144,13 @@ export async function execute(
         body: JSON.stringify({ raw: rawMime })
       });
 
-      if (!res.ok) throw new Error(`Gmail API failed with status ${res.status}: ${await res.text()}`);
+      if (!res.ok) {
+        const errText = await res.text();
+        if (res.status === 401 || res.status === 403) {
+          return { success: false, error: "NOT_AUTHENTICATED", authUrl: getGoogleAuthUrl(chatId) };
+        }
+        throw new Error(`Gmail API failed with status ${res.status}: ${errText}`);
+      }
       
       const sentData = await res.json() as any;
       return { success: true, messageId: sentData.id, message: `Email sent successfully to ${to}.` };
