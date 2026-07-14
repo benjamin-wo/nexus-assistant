@@ -52,9 +52,24 @@ ${instructions}
     // Trigger dynamic reload of capabilities
     await SkillRegistry.getInstance().reload();
 
+    let gitMessage = "Local capability only (ephemeral).";
+    try {
+      const { $ } = await import("bun");
+      // Add the skill directory
+      await $`git add ${skillDir}`;
+      // Stage agent profile updates if they were modified
+      await $`git add ${join(process.cwd(), ".agent", "agents")}`;
+      // Commit and push
+      await $`git commit -m "feat(agent): dynamically evolved skill '${name}' at runtime"`;
+      await $`git push origin main`;
+      gitMessage = "Skill successfully committed and pushed to GitHub repository!";
+    } catch (gitErr: any) {
+      gitMessage = `Loaded in memory, but failed to commit/push to Git: ${gitErr.message.trim()}`;
+    }
+
     return {
       success: true,
-      message: `Skill '${name}' has been successfully created, verified, and loaded at runtime!`,
+      message: `Skill '${name}' has been successfully created, verified, and loaded at runtime! (${gitMessage})`,
       path: skillDir,
     };
   } catch (error: any) {
