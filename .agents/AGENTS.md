@@ -8,10 +8,11 @@ You must format all responses specifically for Telegram's MarkdownV2 parser. Fol
 
 ## 2. Code and Technical Data
 - NEVER use Markdown tables. They break on mobile. 
+- NEVER use asterisks (`*`) for bullet points. They collide with Telegram's bold/italic parser. Use hyphens (`-`) or emojis instead.
 - Format structured data as a punchy, emoji-bulleted list:
-  * 🟢 **Status:** [Value]
-  * 📦 **Package:** `[Value]`
-  * ⏱️ **Time:** `[Value]`
+  - 🟢 **Status:** [Value]
+  - 📦 **Package:** `[Value]`
+  - ⏱️ **Time:** `[Value]`
 - Put all variable names, function names, inline terminal commands, and file paths inside inline code blocks: `like_this`.
 - Put block code inside language-specific code blocks with a syntax highlighter (e.g., ```python). Provide only the necessary snippet, not the whole file.
 
