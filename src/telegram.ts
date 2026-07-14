@@ -301,7 +301,92 @@ async function main() {
           return Response.json({ success: true });
         }
 
-        // 7. Serve Static Files
+        // 7. GET /api/oauth/callback
+        if (url.pathname === "/api/oauth/callback" && req.method === "GET") {
+          const code = url.searchParams.get("code");
+          const chatId = url.searchParams.get("state");
+          if (!code || !chatId) {
+            return new Response("Missing code or state", { status: 400 });
+          }
+
+          // Exchange code for tokens
+          const webappUrl = process.env.WEBAPP_URL || `http://localhost:${port}`;
+          const base = webappUrl.endsWith("/") ? webappUrl.slice(0, -1) : webappUrl;
+          const redirectUri = `${base}/api/oauth/callback`;
+
+          const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              code,
+              client_id: process.env.GOOGLE_CLIENT_ID || "",
+              client_secret: process.env.GOOGLE_CLIENT_SECRET || "",
+              redirect_uri: redirectUri,
+              grant_type: "authorization_code"
+            })
+          });
+
+          if (!tokenRes.ok) {
+            const err = await tokenRes.text();
+            return new Response(`Failed to exchange Google OAuth token: ${err}`, { status: 500 });
+          }
+
+          const tokens = await tokenRes.json() as any;
+
+          // Preserve existing refresh_token if Google does not return a new one on re-auth
+          let refresh = tokens.refresh_token;
+          if (!refresh) {
+            const existing = await storage.getGoogleCredentials(chatId);
+            if (existing) refresh = existing.refresh_token;
+          }
+
+          await storage.saveGoogleCredentials(chatId, {
+            access_token: tokens.access_token,
+            refresh_token: refresh || "",
+            expiry_date: Date.now() + (tokens.expires_in * 1000)
+          });
+
+          return new Response(`
+            <html>
+              <head>
+                <title>Authentication Successful</title>
+                <style>
+                  body {
+                    background-color: #121214;
+                    color: #ffffff;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    height: 100vh;
+                    margin: 0;
+                  }
+                  .card {
+                    background: rgba(255, 255, 255, 0.05);
+                    backdrop-filter: blur(10px);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    padding: 40px;
+                    border-radius: 16px;
+                    text-align: center;
+                    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+                    max-width: 400px;
+                  }
+                  h1 { color: #4caf50; margin-bottom: 10px; font-size: 24px; }
+                  p { color: #b3b3b3; font-size: 16px; line-height: 1.5; }
+                </style>
+              </head>
+              <body>
+                <div class="card">
+                  <h1>✓ Authenticated successfully!</h1>
+                  <p>Nexus has been granted Google access. You can now safely close this window and return to your Telegram chat.</p>
+                </div>
+              </body>
+            </html>
+          `, { headers: { "Content-Type": "text/html" } });
+        }
+
+        // 8. Serve Static Files
         let filePath = url.pathname;
         if (filePath === "/") filePath = "/index.html";
         const publicPath = join(process.cwd(), "src", "public", filePath);

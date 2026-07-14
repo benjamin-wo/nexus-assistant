@@ -6,6 +6,12 @@ export interface MediaAttachment {
   data: string; // Base64 encoded string
 }
 
+export interface GoogleCredentials {
+  access_token: string;
+  refresh_token: string;
+  expiry_date: number;
+}
+
 export interface Message {
   role: "user" | "assistant" | "system";
   content: string;
@@ -75,6 +81,8 @@ export interface IStorage {
   createResearchNote(note: ResearchNote): Promise<number>;
   getResearchNotes(chatId: string): Promise<ResearchNote[]>;
   deleteResearchNote(id: number, chatId: string): Promise<void>;
+  saveGoogleCredentials(chatId: string, credentials: GoogleCredentials): Promise<void>;
+  getGoogleCredentials(chatId: string): Promise<GoogleCredentials | null>;
   close(): Promise<void>;
 }
 
@@ -153,6 +161,13 @@ export class StorageService implements IStorage {
             content TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           );
+
+          CREATE TABLE IF NOT EXISTS google_credentials (
+            chat_id TEXT PRIMARY KEY,
+            access_token TEXT NOT NULL,
+            refresh_token TEXT NOT NULL,
+            expiry_date BIGINT NOT NULL
+          );
         `);
       } finally {
         client.release();
@@ -222,6 +237,15 @@ export class StorageService implements IStorage {
           title TEXT NOT NULL,
           content TEXT NOT NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      this.sqliteDb.run(`
+        CREATE TABLE IF NOT EXISTS google_credentials (
+          chat_id TEXT PRIMARY KEY,
+          access_token TEXT NOT NULL,
+          refresh_token TEXT NOT NULL,
+          expiry_date INTEGER NOT NULL
         );
       `);
     }
@@ -593,6 +617,57 @@ export class StorageService implements IStorage {
         .prepare("DELETE FROM research_notes WHERE id = ? AND chat_id = ?")
         .run(id, chatId);
     }
+  }
+
+  async saveGoogleCredentials(chatId: string, credentials: GoogleCredentials): Promise<void> {
+    if (this.isPostgres && this.pgPool) {
+      await this.pgPool.query(
+        `INSERT INTO google_credentials (chat_id, access_token, refresh_token, expiry_date)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (chat_id) DO UPDATE
+         SET access_token = EXCLUDED.access_token,
+             refresh_token = CASE WHEN EXCLUDED.refresh_token <> '' THEN EXCLUDED.refresh_token ELSE google_credentials.refresh_token END,
+             expiry_date = EXCLUDED.expiry_date`,
+        [chatId, credentials.access_token, credentials.refresh_token, credentials.expiry_date]
+      );
+    } else if (this.sqliteDb) {
+      this.sqliteDb
+        .prepare(
+          `INSERT INTO google_credentials (chat_id, access_token, refresh_token, expiry_date)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(chat_id) DO UPDATE SET
+             access_token = excluded.access_token,
+             refresh_token = CASE WHEN excluded.refresh_token <> '' THEN excluded.refresh_token ELSE google_credentials.refresh_token END,
+             expiry_date = excluded.expiry_date`
+        )
+        .run(chatId, credentials.access_token, credentials.refresh_token, credentials.expiry_date);
+    }
+  }
+
+  async getGoogleCredentials(chatId: string): Promise<GoogleCredentials | null> {
+    if (this.isPostgres && this.pgPool) {
+      const res = await this.pgPool.query(
+        "SELECT access_token, refresh_token, expiry_date FROM google_credentials WHERE chat_id = $1",
+        [chatId]
+      );
+      if (res.rows.length === 0) return null;
+      return {
+        access_token: res.rows[0].access_token,
+        refresh_token: res.rows[0].refresh_token,
+        expiry_date: Number(res.rows[0].expiry_date),
+      };
+    } else if (this.sqliteDb) {
+      const row = this.sqliteDb
+        .prepare("SELECT access_token, refresh_token, expiry_date FROM google_credentials WHERE chat_id = ?")
+        .get(chatId) as any;
+      if (!row) return null;
+      return {
+        access_token: row.access_token,
+        refresh_token: row.refresh_token,
+        expiry_date: Number(row.expiry_date),
+      };
+    }
+    return null;
   }
 
   async close(): Promise<void> {
