@@ -33,9 +33,14 @@ export class WorkerAgent {
       })
       .join("\n");
 
+    const skillInstructions = skillsList
+      .filter((s) => s.instructions && s.instructions.trim())
+      .map((s) => `### Guidelines & Instructions for using tool '${s.name}':\n${s.instructions}`)
+      .join("\n\n");
+
     const systemPromptTemplate = `${this.systemPrompt}
 
-## System Instructions & Protocols
+${skillInstructions ? `## Skill Guidelines & Protocols\n${skillInstructions}\n\n` : ""}## System Instructions & Protocols
 You are executing in a ReAct loop. You can use the tools provided below.
 To reason about your next step, write your reasoning within '<thought></thought>' tags.
 If you need to call a tool, you must write a single '<tool_call>{"name": "toolName", "arguments": {...}}</tool_call>' tag directly after your thought block.
