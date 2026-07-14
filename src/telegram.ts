@@ -111,32 +111,42 @@ async function main() {
     if (isExpenses) {
       const url = getWebAppUrl(chatId);
       const isHttps = url.startsWith("https://");
-      await ctx.reply("Here is your <b>Personal Expense Tracker</b> dashboard:", {
-        parse_mode: "HTML",
-        reply_markup: {
-          inline_keyboard: [[
-            isHttps 
-              ? { text: "📊 Open Expense Dashboard", web_app: { url } }
-              : { text: "📊 Open Expense Dashboard", url }
-          ]]
-        }
-      });
+      
+      if (isHttps) {
+        await ctx.reply("Here is your <b>Personal Expense Tracker</b> dashboard:", {
+          parse_mode: "HTML",
+          reply_markup: {
+            inline_keyboard: [[
+              { text: "📊 Open Expense Dashboard", web_app: { url } }
+            ]]
+          }
+        });
+      } else {
+        await ctx.reply(`Here is your <b>Personal Expense Tracker</b> dashboard link:\n\n<a href="${url}">📊 Open Expense Dashboard</a>\n\n(Local testing link: <code>${url}</code>)`, {
+          parse_mode: "HTML"
+        });
+      }
       return;
     }
 
     if (isNotes) {
       const url = `${getWebAppUrl(chatId)}&tab=notes`;
       const isHttps = url.startsWith("https://");
-      await ctx.reply("Here is your <b>Research Notes</b> library:", {
-        parse_mode: "HTML",
-        reply_markup: {
-          inline_keyboard: [[
-            isHttps 
-              ? { text: "📝 Open Research Notes", web_app: { url } }
-              : { text: "📝 Open Research Notes", url }
-          ]]
-        }
-      });
+      
+      if (isHttps) {
+        await ctx.reply("Here is your <b>Research Notes</b> library:", {
+          parse_mode: "HTML",
+          reply_markup: {
+            inline_keyboard: [[
+              { text: "📝 Open Research Notes", web_app: { url } }
+            ]]
+          }
+        });
+      } else {
+        await ctx.reply(`Here is your <b>Research Notes</b> library link:\n\n<a href="${url}">📝 Open Research Notes</a>\n\n(Local testing link: <code>${url}</code>)`, {
+          parse_mode: "HTML"
+        });
+      }
       return;
     }
 
