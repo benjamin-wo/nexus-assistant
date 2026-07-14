@@ -50,14 +50,19 @@ export class Orchestrator {
       
       const soulPath = join(process.cwd(), ".agent", "soul.md");
       const userPath = join(process.cwd(), ".agent", "user.md");
+      const rulesPath = join(process.cwd(), ".agents", "AGENTS.md");
       let soulPrompt = "";
       let userMemory = "";
+      let agentRules = "";
 
       if (existsSync(soulPath)) {
         soulPrompt = `\n\n# Your Personality & Tone (Soul)\n${await readFile(soulPath, "utf-8")}`;
       }
       if (existsSync(userPath)) {
         userMemory = `\n\n# User Memory & Preferences\n${await readFile(userPath, "utf-8")}`;
+      }
+      if (existsSync(rulesPath)) {
+        agentRules = `\n\n# Formatting Rules & Core Constraints\n${await readFile(rulesPath, "utf-8")}`;
       }
 
       // Add current message to temporary history for classification
@@ -72,7 +77,7 @@ export class Orchestrator {
         throw new Error("Orchestrator instruction profile (.agent/orchestrator.md) is missing.");
       }
       const routerInstructions = await readFile(routerPath, "utf-8");
-      const routerInstructionsWithContext = `${routerInstructions}${soulPrompt}${userMemory}`;
+      const routerInstructionsWithContext = `${routerInstructions}${soulPrompt}${userMemory}${agentRules}`;
 
       // Prepend router instructions to system prompt
       const classificationMessages: Message[] = [
@@ -112,8 +117,8 @@ export class Orchestrator {
 
         console.log(`[Orchestrator] Allowed skills parsed for ${workerName}:`, allowedSkills);
 
-        // Prepend soul and user memory to worker instructions so they carry over
-        const workerInstructionsWithContext = `${workerMd}${soulPrompt}${userMemory}`;
+        // Prepend soul, user memory, and agents rules to worker instructions so they carry over
+        const workerInstructionsWithContext = `${workerMd}${soulPrompt}${userMemory}${agentRules}`;
 
         // Instantiate and run Worker
         const worker = new WorkerAgent(workerName, workerInstructionsWithContext, allowedSkills);
