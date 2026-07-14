@@ -51,4 +51,78 @@ Interpret creatively and make unexpected choices that feel genuinely designed fo
 - **Rich Visuals & Real Images**: DO NOT leave image placeholders or use blank spaces. Always embed high-quality, relevant images using Unsplash CDN links (e.g., \`https://images.unsplash.com/photo-<id>?auto=format&fit=crop&w=800&q=80\`). Choose appropriate Unsplash photo IDs matching the subject matter (e.g., specific ID for historical buildings, food, maps, etc.) to ensure the interface is visually spectacular.
 - **Micro-Animations**: Add entry animations (staggered transitions using \`animation-delay\` or \`@keyframes fade-in-up\`) so the UI loads elegantly. Use smooth scroll behaviors and reactive hover transitions on buttons and interactive elements.
 
+## Premium Design Code Recipes
+
+Use the following modern CSS patterns to make interfaces look premium and custom-coded:
+
+### 1. Frosted Glassmorphism (Dark / Light)
+Use nested semi-transparent borders and backdrops for elegant structural depth:
+```css
+.card-glass {
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.25);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
+              border-color 0.4s ease, 
+              background 0.4s ease;
+}
+.card-glass:hover {
+  transform: translateY(-8px);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+```
+
+### 2. Aura Ambient Backgrounds (Modern Dark Mode)
+Never use flat black or white backgrounds. Use subtle, non-distracting gradient meshes:
+```css
+body {
+  background-color: #0b0a0e;
+  background-image: 
+    radial-gradient(circle at 10% 20%, rgba(255, 87, 34, 0.06) 0%, transparent 45%),
+    radial-gradient(circle at 90% 80%, rgba(0, 255, 204, 0.05) 0%, transparent 50%);
+  color: #e5e3ea;
+  min-height: 100vh;
+}
+```
+
+### 3. Editorial Typography Pairing
+Always load matching display and body font pairings.
+- **Playfair Display** (Serif Heading) + **Lora** (Serif Body) for editorial print or travel guides.
+- **Outfit** (Sans Heading) + **Plus Jakarta Sans** (Sans Body) for tech or product layout grids.
+- **Cabinet Grotesk** + **JetBrains Mono** for clean dashboard metrics.
+```html
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
+```
+
+### 4. Interactive Accordions (CSS & JS)
+Make list items expand smoothly using modern grid height tricks:
+```html
+<div class="accordion">
+  <button class="accordion-trigger" onclick="this.nextElementSibling.classList.toggle('open')">Show details</button>
+  <div class="accordion-content">
+    <div class="content-wrapper">Inner details text here...</div>
+  </div>
+</div>
+<style>
+  .accordion-content {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.3s ease-out;
+    overflow: hidden;
+  }
+  .accordion-content.open {
+    grid-template-rows: 1fr;
+  }
+  .content-wrapper {
+    min-height: 0;
+  }
+</style>
+```
+
+Ensure every design element has smooth transitions, uses custom scrollbars, and includes clean spacing. Do not resort to simple black borders on white containers.
+
 Remember: Claude is capable of extraordinary creative work. Don't hold back, show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
