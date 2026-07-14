@@ -38,6 +38,9 @@ function markdownToHtml(markdown: string): string {
   // 6. Italic: _italic_ (only if it has a boundary)
   html = html.replace(/(?<=^|\s|[.,!?;:])_([^_]+)_(?=$|\s|[.,!?;:])/g, "<i>$1</i>");
 
+  // 7. Links: [text](url) -> <a href="$2">$1</a>
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
   return html;
 }
 

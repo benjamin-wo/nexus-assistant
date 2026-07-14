@@ -117,6 +117,10 @@ Format requirements:
           const result = await registry.executeSkill(toolName, toolArgs, { chatId });
           console.log(`[Tool Response] '${toolName}' succeeded.`);
           
+          if (result && result.success === false && result.error === "NOT_AUTHENTICATED") {
+            return `🔒 **Google Authentication Required**\n\nTo allow me to access your Google account, please authorize access by visiting this link:\n\n👉 [Authorize Google Account](${result.authUrl})\n\nAfter authorizing, return here and run your command again!`;
+          }
+
           messages.push({
             role: "user",
             content: `<tool_response>${JSON.stringify(result)}</tool_response>`,
