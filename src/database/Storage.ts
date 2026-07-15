@@ -84,6 +84,7 @@ export interface IStorage {
   deleteResearchNote(id: number, chatId: string): Promise<void>;
   saveGoogleCredentials(chatId: string, credentials: GoogleCredentials): Promise<void>;
   getGoogleCredentials(chatId: string): Promise<GoogleCredentials | null>;
+  getAllGoogleCredentials(): Promise<{chatId: string, credentials: GoogleCredentials}[]>;
   close(): Promise<void>;
 }
 
@@ -690,6 +691,35 @@ export class StorageService implements IStorage {
       };
     }
     return null;
+  }
+
+  async getAllGoogleCredentials(): Promise<{chatId: string, credentials: GoogleCredentials}[]> {
+    if (this.isPostgres && this.pgPool) {
+      const res = await this.pgPool.query(
+        "SELECT chat_id, access_token, refresh_token, expiry_date FROM google_credentials"
+      );
+      return res.rows.map((row: any) => ({
+        chatId: row.chat_id,
+        credentials: {
+          access_token: row.access_token,
+          refresh_token: row.refresh_token,
+          expiry_date: Number(row.expiry_date),
+        }
+      }));
+    } else if (this.sqliteDb) {
+      const rows = this.sqliteDb
+        .prepare("SELECT chat_id, access_token, refresh_token, expiry_date FROM google_credentials")
+        .all() as any[];
+      return rows.map((row) => ({
+        chatId: row.chat_id,
+        credentials: {
+          access_token: row.access_token,
+          refresh_token: row.refresh_token,
+          expiry_date: Number(row.expiry_date),
+        }
+      }));
+    }
+    return [];
   }
 
   async close(): Promise<void> {
