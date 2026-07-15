@@ -26,8 +26,8 @@ export class LlmService {
       return "I'm sorry, I couldn't process that request.";
     }
 
-    if (totalLength > 10000) {
-      Logger.error(`[LlmService] Validation Error: Prompt length (${totalLength}) exceeds 10000 characters`);
+    if (totalLength > 500000) {
+      Logger.error(`[LlmService] Validation Error: Prompt length (${totalLength}) exceeds 500000 characters`);
       return "I'm sorry, I couldn't process that request.";
     }
 

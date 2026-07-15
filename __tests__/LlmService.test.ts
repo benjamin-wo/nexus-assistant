@@ -93,8 +93,8 @@ describe("LlmService API Reliability", () => {
     expect(result).toBe("I'm sorry, I couldn't process that request.");
   });
 
-  test("Validation: Rejects prompt over 10000 chars", async () => {
-    const longString = "A".repeat(10001);
+  test("Validation: Rejects prompt over 500000 chars", async () => {
+    const longString = "A".repeat(500001);
     const result = await llmService.generateResponse([{ role: "user", content: longString }]);
     expect(result).toBe("I'm sorry, I couldn't process that request.");
   });
