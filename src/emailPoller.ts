@@ -39,6 +39,10 @@ async function getOrCreateLabel(accessToken: string): Promise<string> {
   const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/labels", {
     headers: { Authorization: `Bearer ${accessToken}` }
   });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Failed to fetch labels: ${err}`);
+  }
   const data = await res.json();
   const existingLabel = data.labels?.find((l: any) => l.name === LABEL_NAME);
   
@@ -59,6 +63,11 @@ async function getOrCreateLabel(accessToken: string): Promise<string> {
       messageListVisibility: "show"
     })
   });
+  
+  if (!createRes.ok) {
+    const err = await createRes.text();
+    throw new Error(`Failed to create label: ${err}`);
+  }
   
   const createData = await createRes.json();
   return createData.id;
@@ -192,7 +201,7 @@ async function processUser(chatId: string, credentials: GoogleCredentials, stora
       }
 
       // Add label so we don't process it again
-      await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}/modify`, {
+      const modifyRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}/modify`, {
         method: "POST",
         headers: { 
           Authorization: `Bearer ${accessToken}`,
@@ -202,7 +211,13 @@ async function processUser(chatId: string, credentials: GoogleCredentials, stora
           addLabelIds: [labelId]
         })
       });
-      console.log(`[EmailPoller] Label applied to ${msg.id}`);
+
+      if (!modifyRes.ok) {
+        const errStr = await modifyRes.text();
+        console.error(`[EmailPoller] Failed to apply label to ${msg.id}: ${errStr}`);
+      } else {
+        console.log(`[EmailPoller] Label applied to ${msg.id}`);
+      }
     }
 
   } catch (err) {

@@ -6,7 +6,7 @@ export function getGoogleAuthUrl(chatId: string): string {
   const base = webappUrl.endsWith("/") ? webappUrl.slice(0, -1) : webappUrl;
   const redirectUri = `${base}/api/oauth/callback`;
   const scopes = encodeURIComponent(
-    "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar"
+    "https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar"
   );
   return `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(
     redirectUri
