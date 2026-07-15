@@ -191,6 +191,10 @@ Output format MUST be EXACTLY:
         const llmReply = data.choices[0].message.content;
 
         await ctx.reply(markdownToHtml(llmReply), { parse_mode: "HTML" });
+
+        // Mark logs as resolved so they don't appear in future /fixingtime calls
+        const logIds = logs.map(l => l.id);
+        await storage.markLogsResolved(logIds);
       } catch (err: any) {
         await ctx.reply(`❌ Failed to generate fixing time summary: ${err.message}`);
       }

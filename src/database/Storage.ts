@@ -73,6 +73,7 @@ export interface IStorage {
   logEvent(log: LogEntry): Promise<void>;
   getRecentLogs(limit?: number): Promise<any[]>;
   getLogsPastHours(hours: number): Promise<any[]>;
+  markLogsResolved(ids: number[]): Promise<void>;
   createTask(task: TaskEntry): Promise<void>;
   updateTaskStatus(taskId: string, status: TaskEntry["status"]): Promise<void>;
   getTask(taskId: string): Promise<TaskEntry | null>;
@@ -136,8 +137,12 @@ export class StorageService implements IStorage {
             details TEXT,
             duration_ms INTEGER,
             is_error BOOLEAN DEFAULT FALSE,
+            resolved BOOLEAN DEFAULT FALSE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           );
+          
+          -- Migration: add resolved to logs if missing
+          ALTER TABLE logs ADD COLUMN IF NOT EXISTS resolved BOOLEAN DEFAULT FALSE;
           
           CREATE TABLE IF NOT EXISTS tasks (
             task_id TEXT PRIMARY KEY,
@@ -207,9 +212,17 @@ export class StorageService implements IStorage {
           details TEXT,
           duration_ms INTEGER,
           is_error BOOLEAN DEFAULT FALSE,
+          resolved BOOLEAN DEFAULT FALSE,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
       `);
+
+      // SQLite migration: try adding resolved to logs if missing
+      try {
+        this.sqliteDb.run("ALTER TABLE logs ADD COLUMN resolved BOOLEAN DEFAULT FALSE;");
+      } catch (err: any) {
+        // If it fails, the column likely already exists. SQLite throws 'duplicate column name' error.
+      }
 
       this.sqliteDb.run(`
         CREATE TABLE IF NOT EXISTS tasks (
@@ -423,6 +436,7 @@ export class StorageService implements IStorage {
          FROM logs 
          WHERE created_at >= NOW() - interval '1 hour' * $1 
          AND (is_error = TRUE OR category = 'IMPROVEMENT' OR category = 'TELEGRAM_GLOBAL_ERROR' OR category = 'TELEGRAM_MESSAGE_ERROR')
+         AND (resolved = FALSE OR resolved IS NULL)
          ORDER BY created_at ASC`,
         [hours]
       );
@@ -435,6 +449,7 @@ export class StorageService implements IStorage {
            FROM logs 
            WHERE created_at >= datetime('now', '-' || ? || ' hours')
            AND (is_error = 1 OR category = 'IMPROVEMENT' OR category = 'TELEGRAM_GLOBAL_ERROR' OR category = 'TELEGRAM_MESSAGE_ERROR')
+           AND (resolved = 0 OR resolved IS NULL)
            ORDER BY created_at ASC`
         )
         .all(hours) as any[];
@@ -444,6 +459,24 @@ export class StorageService implements IStorage {
       }));
     }
     return [];
+  }
+
+  async markLogsResolved(ids: number[]): Promise<void> {
+    if (ids.length === 0) return;
+    
+    if (this.isPostgres && this.pgPool) {
+      const placeholders = ids.map((_, i) => `$${i + 1}`).join(",");
+      await this.pgPool.query(
+        `UPDATE logs SET resolved = TRUE WHERE id IN (${placeholders})`,
+        ids
+      );
+    } else if (this.sqliteDb) {
+      const placeholders = ids.map(() => "?").join(",");
+      this.sqliteDb.run(
+        `UPDATE logs SET resolved = 1 WHERE id IN (${placeholders})`,
+        ids
+      );
+    }
   }
 
   async createTask(task: TaskEntry): Promise<void> {
