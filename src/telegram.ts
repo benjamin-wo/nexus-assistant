@@ -331,7 +331,7 @@ Output format MUST be EXACTLY:
   const port = process.env.PORT || 3000;
   Bun.serve({
     port: Number(port),
-    async fetch(req) {
+    async fetch(req: Request) {
       const url = new URL(req.url);
       const storage = new StorageService();
 
