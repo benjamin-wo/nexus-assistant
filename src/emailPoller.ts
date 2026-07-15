@@ -210,7 +210,7 @@ async function processUser(chatId: string, credentials: GoogleCredentials, stora
   }
 }
 
-async function main() {
+export async function pollEmails() {
   console.log("[EmailPoller] Starting poll cycle...");
   const storage = new StorageService();
   await storage.initialize();
@@ -226,4 +226,19 @@ async function main() {
   console.log("[EmailPoller] Cycle complete.");
 }
 
-main().catch(console.error);
+export function startEmailPoller(intervalMs: number = 15 * 60 * 1000) {
+  console.log(`[EmailPoller] Initialized to run every ${intervalMs / 60000} minutes.`);
+  
+  // Run once immediately
+  pollEmails().catch(console.error);
+
+  // Set up the interval
+  setInterval(() => {
+    pollEmails().catch(console.error);
+  }, intervalMs);
+}
+
+// If run directly from CLI (e.g., bun run src/emailPoller.ts)
+if (import.meta.main) {
+  pollEmails().catch(console.error);
+}

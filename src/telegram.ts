@@ -5,6 +5,7 @@ import { Scheduler } from "./services/Scheduler";
 import { TaskRegistry } from "./core/TaskRegistry";
 import { StorageService } from "./database/Storage";
 import { join } from "path";
+import { startEmailPoller } from "./emailPoller";
 
 function escapeHtml(text: string): string {
   return text
@@ -459,6 +460,10 @@ async function main() {
   });
 
   console.log(`[Telegram] Web Server started on port ${port}`);
+  
+  // 7. Start the Email Poller background loop (every 15 minutes)
+  startEmailPoller(15 * 60 * 1000);
+
   console.log("[Telegram] Bot starting...");
   await bot.start();
 }
