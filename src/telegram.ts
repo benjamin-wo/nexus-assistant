@@ -18,17 +18,23 @@ function markdownToHtml(markdown: string): string {
   // 1. Escape HTML entities
   let html = escapeHtml(markdown);
 
+  const placeholders: string[] = [];
+
   // 2. Code blocks: ```code``` -> <pre><code>code</code></pre>
   html = html.replace(/```([\s\S]*?)```/g, (match, code) => {
     const lines = code.split("\n");
     if (lines.length > 0 && /^[a-zA-Z0-9_-]+$/.test(lines[0].trim())) {
       lines.shift();
     }
-    return `<pre><code>${lines.join("\n").trim()}</code></pre>`;
+    placeholders.push(`<pre><code>${lines.join("\n").trim()}</code></pre>`);
+    return `%%PLACEHOLDER_${placeholders.length - 1}%%`;
   });
 
   // 3. Inline code: `code` -> <code>code</code>
-  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+  html = html.replace(/`([^`]+)`/g, (match, code) => {
+    placeholders.push(`<code>${code}</code>`);
+    return `%%PLACEHOLDER_${placeholders.length - 1}%%`;
+  });
 
   // 4. Bold: **bold** -> <b>bold</b> (enforce non-space inner boundaries, no nested asterisks)
   html = html.replace(/(?<!\*)\*\*(?!\*)(?=\S)([\s\S]*?)(?<=\S)\*\*(?!\*)/g, "<b>$1</b>");
@@ -42,6 +48,11 @@ function markdownToHtml(markdown: string): string {
   // 7. Links: [text](url) -> <a href="$2">$1</a>
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
  
+  // 8. Restore placeholders
+  for (let i = 0; i < placeholders.length; i++) {
+    html = html.replace(`%%PLACEHOLDER_${i}%%`, placeholders[i]);
+  }
+
   return html;
 }
 
