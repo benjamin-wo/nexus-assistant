@@ -1,5 +1,6 @@
 import { Message } from "../database/Storage";
 import { GeminiEmptyResponseError, GeminiApiError } from "./errors";
+import { Logger } from "./Logger";
 
 export class LlmService {
   private provider: string;
@@ -15,21 +16,50 @@ export class LlmService {
   }
 
   async generateResponse(messages: Message[]): Promise<string> {
+    let totalLength = 0;
+    for (const msg of messages) {
+      if (msg.content) totalLength += msg.content.length;
+    }
+
+    if (totalLength === 0) {
+      Logger.error("[LlmService] Validation Error: Prompt string is empty");
+      return "I'm sorry, I couldn't process that request.";
+    }
+
+    if (totalLength > 10000) {
+      Logger.error(`[LlmService] Validation Error: Prompt length (${totalLength}) exceeds 10000 characters`);
+      return "I'm sorry, I couldn't process that request.";
+    }
+
     const hasMedia = messages.some((msg) => msg.media && msg.media.length > 0);
     if (hasMedia) {
-      console.log("[LlmService] Media detected. Routing to Gemini...");
-      return this.callGemini(messages);
+      Logger.info("[LlmService] Media detected. Routing to Gemini...");
+      return this.callGeminiWithFallback(messages);
     }
 
     switch (this.provider) {
       case "gemini":
-        return this.callGemini(messages);
+        return this.callGeminiWithFallback(messages);
       case "deepseek":
         return this.callDeepseek(messages);
       case "openrouter":
         return this.callOpenrouter(messages);
       default:
         throw new Error(`Unsupported LLM provider: ${this.provider}`);
+    }
+  }
+
+  private async callGeminiWithFallback(messages: Message[]): Promise<string> {
+    try {
+      return await this.callGemini(messages);
+    } catch (err: any) {
+      Logger.error(`[LlmService] Gemini API failed after retries: ${err.message}. Attempting fallback...`);
+      try {
+        return await this.callDeepseek(messages);
+      } catch (fallbackErr: any) {
+        Logger.error(`[LlmService] Fallback to Deepseek also failed: ${fallbackErr.message}`);
+        throw err; // Throw original Gemini error for upstream graceful degradation
+      }
     }
   }
 
@@ -97,7 +127,7 @@ export class LlmService {
 
     while (attempt <= maxRetries) {
       try {
-        console.log(`[LlmService] [req-${reqId}] Calling Gemini API (Attempt ${attempt + 1}/${maxRetries + 1})...`);
+        Logger.info(`[LlmService] [req-${reqId}] Calling Gemini API (Attempt ${attempt + 1}/${maxRetries + 1})...`);
         const res = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -106,7 +136,7 @@ export class LlmService {
 
         if (!res.ok) {
           const errText = await res.text();
-          console.error(`[LlmService] [req-${reqId}] Gemini API error (${res.status}): ${errText}`);
+          Logger.error(`[LlmService] [req-${reqId}] Gemini API error (${res.status}): ${errText}`);
           
           // Transient errors
           if (res.status >= 500 || res.status === 429) {
@@ -121,11 +151,11 @@ export class LlmService {
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
         
         if (!text) {
-          console.warn(`[LlmService] [req-${reqId}] Gemini API returned empty completion. Data: ${JSON.stringify(data)}`);
+          Logger.warn(`[LlmService] [req-${reqId}] Gemini API returned empty completion. Data: ${JSON.stringify(data)}`);
           throw new GeminiEmptyResponseError();
         }
 
-        console.log(`[LlmService] [req-${reqId}] Gemini API call successful.`);
+        Logger.info(`[LlmService] [req-${reqId}] Gemini API call successful.`);
         return text;
       } catch (err: any) {
         if (err.name !== "GeminiApiError" && err.name !== "TypeError" && err.name !== "FetchError") {
@@ -144,12 +174,12 @@ export class LlmService {
         }
 
         if (attempt >= maxRetries) {
-          console.error(`[LlmService] [req-${reqId}] Max retries reached. Failing.`);
+          Logger.error(`[LlmService] [req-${reqId}] Max retries reached. Failing.`);
           throw err;
         }
 
         const delay = delays[attempt];
-        console.log(`[LlmService] [req-${reqId}] Transient error caught. Retrying in ${delay}ms...`);
+        Logger.info(`[LlmService] [req-${reqId}] Transient error caught. Retrying in ${delay}ms...`);
         await new Promise(r => setTimeout(r, delay));
         attempt++;
       }

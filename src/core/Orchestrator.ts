@@ -6,6 +6,7 @@ import { LlmService } from "./LlmService";
 import { WorkerAgent } from "./WorkerAgent";
 import { TaskRegistry } from "./TaskRegistry";
 import { GeminiEmptyResponseError, GeminiApiError } from "./errors";
+import { Logger } from "./Logger";
 
 export class Orchestrator {
   private llmService: LlmService;
@@ -116,7 +117,7 @@ export class Orchestrator {
           }
         }
 
-        console.log(`[Orchestrator] Allowed skills parsed for ${workerName}:`, allowedSkills);
+        Logger.info(`[Orchestrator] Allowed skills parsed for ${workerName}:`, allowedSkills);
 
         // Prepend soul, user memory, and agents rules to worker instructions so they carry over
         const workerInstructionsWithContext = `${workerMd}${soulPrompt}${userMemory}${agentRules}`;
@@ -138,7 +139,7 @@ export class Orchestrator {
     } catch (error: any) {
       isError = true;
       logMsg = `Orchestration error: ${error.message}`;
-      console.error("[Orchestrator Error]", error);
+      Logger.error("[Orchestrator Error]", error);
       
       if (error instanceof GeminiEmptyResponseError || error instanceof GeminiApiError) {
         return "⚠️ I'm sorry, I couldn't process that request due to a temporary AI provider issue. Please try again in a few moments.";
