@@ -41,7 +41,15 @@
     <main class="tab-content">
       <!-- Tab 1: Expenses -->
       <section id="tab-expenses" class="tab-panel active">
-        <!-- Quick Stats Cards -->
+        <!-- Controls & Quick Stats -->
+        <div class="controls-bar">
+          <select id="time-filter" onchange="renderExpenses()">
+            <option value="this_month">This Month</option>
+            <option value="last_month">Last Month</option>
+            <option value="all_time">All Time</option>
+          </select>
+        </div>
+
         <div class="stats-grid">
           <div class="stat-card">
             <span class="stat-label">Total Expensed</span>
@@ -53,7 +61,13 @@
           </div>
         </div>
 
-        <!-- Chart -->
+        <!-- Charts -->
+        <div class="chart-container glass-card">
+          <h3>Spending Trend</h3>
+          <div class="canvas-wrapper">
+            <canvas id="trendChart"></canvas>
+          </div>
+        </div>
         <div class="chart-container glass-card">
           <h3>Category Breakdown</h3>
           <div class="canvas-wrapper">

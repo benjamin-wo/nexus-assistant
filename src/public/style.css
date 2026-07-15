@@ -132,12 +132,32 @@ h1 {
 /* Panels */
 .tab-panel {
   display: none;
+  animation: fadeIn 0.3s ease;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .tab-panel.active {
   display: flex;
+}
+
+/* Controls Bar */
+.controls-bar {
+  display: flex;
+  justify-content: flex-end;
+}
+.controls-bar select {
+  background: var(--panel-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  outline: none;
+  cursor: pointer;
+}
+.controls-bar select:focus {
+  border-color: var(--accent-primary);
 }
 
 /* Stats */

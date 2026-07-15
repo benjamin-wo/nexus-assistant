@@ -16,6 +16,7 @@ let chatId = "cli_chat_session";
 let expenses = [];
 let notes = [];
 let categoryChart = null;
+let trendChart = null;
 
 // Parse Chat ID from URL query parameters or Telegram SDK
 function init() {
@@ -99,34 +100,59 @@ async function fetchExpenses() {
   }
 }
 
+function getTimeFilteredExpenses() {
+  const filterVal = document.getElementById("time-filter").value;
+  if (filterVal === "all_time") return expenses;
+
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+
+  return expenses.filter(exp => {
+    const d = new Date(exp.createdAt);
+    if (filterVal === "this_month") {
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    } else if (filterVal === "last_month") {
+      const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+      const lastYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+      return d.getMonth() === lastMonth && d.getFullYear() === lastYear;
+    }
+    return true;
+  });
+}
+
 function renderExpenses() {
   const listEl = document.getElementById("expense-list");
   const totalValEl = document.getElementById("total-amount");
   const totalCountEl = document.getElementById("total-count");
 
   listEl.innerHTML = "";
+  
+  const filteredExpenses = getTimeFilteredExpenses();
 
-  if (expenses.length === 0) {
+  if (filteredExpenses.length === 0) {
     listEl.innerHTML = '<p class="placeholder-text">No expenses logged yet.</p>';
     totalValEl.textContent = "$0.00";
     totalCountEl.textContent = "0";
-    updateChart({});
+    updateChart({}, []);
     return;
   }
 
   let totalAmount = 0;
   const categories = {};
 
-  expenses.forEach(exp => {
+  filteredExpenses.forEach(exp => {
     totalAmount += exp.amount;
     categories[exp.category] = (categories[exp.category] || 0) + exp.amount;
+
+    const dateStr = exp.createdAt ? new Date(exp.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : "";
 
     const item = document.createElement("div");
     item.className = "list-item";
     item.innerHTML = `
       <div class="item-left">
         <span class="item-title">${escapeString(exp.description)}</span>
-        <span class="item-category">${escapeString(exp.category)}</span>
+        <span class="item-category">${escapeString(exp.category)} <span style="font-size:0.8em; opacity:0.6; margin-left:6px;">${dateStr}</span></span>
       </div>
       <div class="item-right">
         <span class="item-amount">$${exp.amount.toFixed(2)}</span>
@@ -137,9 +163,9 @@ function renderExpenses() {
   });
 
   totalValEl.textContent = `$${totalAmount.toFixed(2)}`;
-  totalCountEl.textContent = expenses.length;
+  totalCountEl.textContent = filteredExpenses.length;
 
-  updateChart(categories);
+  updateChart(categories, filteredExpenses);
 }
 
 async function submitExpense(event) {
@@ -187,55 +213,79 @@ async function deleteExpense(id) {
   }
 }
 
-function updateChart(categoryData) {
-  const ctx = document.getElementById("categoryChart").getContext("2d");
+function updateChart(categoryData, filteredExpenses) {
+  const catCtx = document.getElementById("categoryChart").getContext("2d");
+  const trendCtx = document.getElementById("trendChart").getContext("2d");
   
+  if (categoryChart) categoryChart.destroy();
+  if (trendChart) trendChart.destroy();
+
   const labels = Object.keys(categoryData);
   const data = Object.values(categoryData);
 
-  if (categoryChart) {
-    categoryChart.destroy();
-  }
-
-  if (labels.length === 0) {
-    return;
-  }
-
-  categoryChart = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: labels,
-      datasets: [{
-        data: data,
-        backgroundColor: [
-          '#a78bfa', // violet
-          '#34d399', // green
-          '#60a5fa', // blue
-          '#fb7185', // rose
-          '#fbbf24', // amber
-          '#9ca3af'  // grey
-        ],
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)'
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: 'right',
-          labels: {
-            color: '#9ca3af',
-            font: {
-              family: 'Outfit',
-              size: 11
-            }
+  if (labels.length > 0) {
+    categoryChart = new Chart(catCtx, {
+      type: 'doughnut',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: data,
+          backgroundColor: [
+            '#a78bfa', '#34d399', '#60a5fa', '#fb7185', '#fbbf24', '#9ca3af'
+          ],
+          borderWidth: 1,
+          borderColor: 'rgba(255,255,255,0.06)'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: { color: '#9ca3af', font: { family: 'Outfit', size: 11 } }
           }
         }
       }
-    }
-  });
+    });
+  }
+
+  if (filteredExpenses && filteredExpenses.length > 0) {
+    // Aggregate by day
+    const dailyTotals = {};
+    filteredExpenses.forEach(exp => {
+      const dateStr = exp.createdAt ? new Date(exp.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : "Unknown";
+      dailyTotals[dateStr] = (dailyTotals[dateStr] || 0) + exp.amount;
+    });
+
+    // Sort by actual date ascending
+    const sortedDates = Object.keys(dailyTotals).sort((a, b) => new Date(a + " " + new Date().getFullYear()) - new Date(b + " " + new Date().getFullYear()));
+    const trendData = sortedDates.map(date => dailyTotals[date]);
+
+    trendChart = new Chart(trendCtx, {
+      type: 'bar',
+      data: {
+        labels: sortedDates,
+        datasets: [{
+          label: 'Daily Spending',
+          data: trendData,
+          backgroundColor: '#8b5cf6',
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af', font: { family: 'Outfit', size: 10 } } },
+          x: { grid: { display: false }, ticks: { color: '#9ca3af', font: { family: 'Outfit', size: 10 } } }
+        },
+        plugins: {
+          legend: { display: false }
+        }
+      }
+    });
+  }
 }
 
 // ==========================================
