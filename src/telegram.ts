@@ -61,6 +61,8 @@ async function main() {
   const bot = new Bot(token);
   const orchestrator = new Orchestrator();
   const scheduler = new Scheduler();
+  const storage = new StorageService();
+  await storage.initialize();
 
   // 2. Start Scheduler (Secretary alert callback routes directly to Telegram Chat ID)
   scheduler.start(async (chatId, message) => {
@@ -245,13 +247,34 @@ async function main() {
       await ctx.reply(markdownToHtml(response), { parse_mode: "HTML" });
     } catch (err: any) {
       console.error(`[Telegram Message Error] Chat: ${chatId}`, err);
+      try {
+        await storage.logEvent({
+          category: "TELEGRAM_MESSAGE_ERROR",
+          message: err.message,
+          details: err.stack || JSON.stringify(err),
+          isError: true
+        });
+      } catch (dbErr) {
+        console.error("Failed to log error to DB:", dbErr);
+      }
       await ctx.reply(`❌ An execution error occurred: ${err.message}`);
     }
   });
 
   // 5. Global error handler
-  bot.catch((err) => {
+  bot.catch(async (err) => {
     console.error("[Telegram Global Bot Error]", err.error);
+    try {
+      const errorObj = err.error instanceof Error ? err.error : new Error(String(err.error));
+      await storage.logEvent({
+        category: "TELEGRAM_GLOBAL_ERROR",
+        message: errorObj.message,
+        details: errorObj.stack || JSON.stringify(err.error),
+        isError: true
+      });
+    } catch (dbErr) {
+      console.error("Failed to log global error to DB:", dbErr);
+    }
   });
 
   // 6. Start Web Server using Bun.serve

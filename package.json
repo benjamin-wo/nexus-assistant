@@ -5,7 +5,8 @@
   "scripts": {
     "start": "bun run src/telegram.ts",
     "cli": "bun run src/cli.ts",
-    "telegram": "bun run src/telegram.ts"
+    "telegram": "bun run src/telegram.ts",
+    "fixer": "bun run src/fixerAgent.ts"
   },
   "dependencies": {
     "grammy": "^1.20.0",
