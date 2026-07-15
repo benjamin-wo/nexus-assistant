@@ -72,6 +72,7 @@ export interface IStorage {
   markReminderSent(id: number): Promise<void>;
   logEvent(log: LogEntry): Promise<void>;
   getRecentLogs(limit?: number): Promise<any[]>;
+  getLogsPastHours(hours: number): Promise<any[]>;
   createTask(task: TaskEntry): Promise<void>;
   updateTaskStatus(taskId: string, status: TaskEntry["status"]): Promise<void>;
   getTask(taskId: string): Promise<TaskEntry | null>;
@@ -406,6 +407,37 @@ export class StorageService implements IStorage {
           "SELECT id, category, message, details, duration_ms as durationMs, is_error as isError, created_at as createdAt FROM logs ORDER BY created_at DESC, id DESC LIMIT ?"
         )
         .all(limit) as any[];
+      return rows.map((r) => ({
+        ...r,
+        isError: Boolean(r.isError),
+      }));
+    }
+    return [];
+  }
+
+  async getLogsPastHours(hours: number): Promise<any[]> {
+    if (this.isPostgres && this.pgPool) {
+      // Postgres interval calculation
+      const res = await this.pgPool.query(
+        `SELECT id, category, message, details, duration_ms as "durationMs", is_error as "isError", created_at as "createdAt" 
+         FROM logs 
+         WHERE created_at >= NOW() - interval '1 hour' * $1 
+         AND (is_error = TRUE OR category = 'IMPROVEMENT' OR category = 'TELEGRAM_GLOBAL_ERROR' OR category = 'TELEGRAM_MESSAGE_ERROR')
+         ORDER BY created_at ASC`,
+        [hours]
+      );
+      return res.rows;
+    } else if (this.sqliteDb) {
+      // SQLite datetime calculation
+      const rows = this.sqliteDb
+        .prepare(
+          `SELECT id, category, message, details, duration_ms as durationMs, is_error as isError, created_at as createdAt 
+           FROM logs 
+           WHERE created_at >= datetime('now', '-' || ? || ' hours')
+           AND (is_error = 1 OR category = 'IMPROVEMENT' OR category = 'TELEGRAM_GLOBAL_ERROR' OR category = 'TELEGRAM_MESSAGE_ERROR')
+           ORDER BY created_at ASC`
+        )
+        .all(hours) as any[];
       return rows.map((r) => ({
         ...r,
         isError: Boolean(r.isError),

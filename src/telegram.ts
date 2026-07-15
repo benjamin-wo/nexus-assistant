@@ -137,6 +137,55 @@ async function main() {
     const chatId = String(ctx.chat.id);
     const text = (ctx.message.text || ctx.message.caption || "").trim();
 
+    // Check for /fixingtime
+    if (text === "/fixingtime") {
+      await ctx.replyWithChatAction("typing");
+      try {
+        const logs = await storage.getLogsPastHours(24);
+        if (logs.length === 0) {
+          await ctx.reply("No errors or improvements logged in the last 24 hours. Great job!");
+          return;
+        }
+
+        const logContext = logs.map(l => `[${l.category}] ${l.message}\nDetails: ${l.details || "None"}`).join("\n---\n");
+        const promptText = `
+You are a Staff Software Engineer handing off work. The user uses an advanced AI coding assistant (Antigravity) locally.
+Your job is to generate a comprehensive summary of the errors and improvements logged today, followed by a "Solid Prompt" that the user can copy and paste directly into their local Antigravity IDE.
+The solid prompt should instruct the local AI to fix the specific errors and implement the requested improvements in their codebase. Keep the prompt extremely detailed so the AI knows exactly what to do.
+
+Here are the raw logs from the past 24 hours:
+${logContext}
+
+Output format MUST be EXACTLY:
+1. **Summary of Issues** (bullet points)
+2. **Requested Features** (bullet points)
+3. **The Magic Prompt** (Put the actual prompt text inside a standard markdown code block so the user can click to copy it)
+`;
+
+        const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${process.env.DEEPSEEK_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: "deepseek-chat",
+            messages: [{ role: "user", content: promptText }],
+            temperature: 0.3
+          })
+        });
+
+        if (!response.ok) throw new Error("DeepSeek API failed");
+        const data = await response.json();
+        const llmReply = data.choices[0].message.content;
+
+        await ctx.reply(markdownToHtml(llmReply), { parse_mode: "HTML" });
+      } catch (err: any) {
+        await ctx.reply(`❌ Failed to generate fixing time summary: ${err.message}`);
+      }
+      return;
+    }
+
     // Check if the user is asking to open the dashboard/expenses/notes
     const isExpenses = text.startsWith("/expenses") || text.toLowerCase().includes("show expense") || text.toLowerCase().includes("expense dashboard");
     const isNotes = text.startsWith("/notes") || text.toLowerCase().includes("show note") || text.toLowerCase().includes("notes library");
