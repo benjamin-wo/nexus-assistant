@@ -1,5 +1,6 @@
 import { Message } from "../database/Storage";
 import { LlmService } from "./LlmService";
+import { GeminiEmptyResponseError, GeminiApiError } from "./errors";
 import { SkillRegistry } from "./SkillRegistry";
 
 export class WorkerAgent {
@@ -71,7 +72,16 @@ Format requirements:
       turns++;
       console.log(`[WorkerAgent:${this.name}] Turn ${turns}/${maxTurns}...`);
 
-      const completion = await this.llmService.generateResponse(messages);
+      let completion = "";
+      try {
+        completion = await this.llmService.generateResponse(messages);
+      } catch (err: any) {
+        if (err instanceof GeminiEmptyResponseError || err instanceof GeminiApiError) {
+          console.error(`[WorkerAgent:${this.name}] Temporary API error caught, aborting task: ${err.message}`);
+          return "⚠️ I'm sorry, I encountered a temporary issue with the AI provider while processing your request. Please try again later.";
+        }
+        throw err;
+      }
       
       // Save LLM turn to the execution dialogue
       messages.push({ role: "assistant", content: completion, subagent: this.name });

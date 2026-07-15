@@ -5,6 +5,7 @@ import { StorageService, Message, MediaAttachment } from "../database/Storage";
 import { LlmService } from "./LlmService";
 import { WorkerAgent } from "./WorkerAgent";
 import { TaskRegistry } from "./TaskRegistry";
+import { GeminiEmptyResponseError, GeminiApiError } from "./errors";
 
 export class Orchestrator {
   private llmService: LlmService;
@@ -138,6 +139,11 @@ export class Orchestrator {
       isError = true;
       logMsg = `Orchestration error: ${error.message}`;
       console.error("[Orchestrator Error]", error);
+      
+      if (error instanceof GeminiEmptyResponseError || error instanceof GeminiApiError) {
+        return "⚠️ I'm sorry, I couldn't process that request due to a temporary AI provider issue. Please try again in a few moments.";
+      }
+      
       return `❌ An internal agent error occurred: ${error.message}`;
     } finally {
       // Telemetry log tracking

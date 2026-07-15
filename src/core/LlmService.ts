@@ -1,4 +1,5 @@
 import { Message } from "../database/Storage";
+import { GeminiEmptyResponseError, GeminiApiError } from "./errors";
 
 export class LlmService {
   private provider: string;
@@ -89,24 +90,72 @@ export class LlmService {
       temperature: 0.1,
     };
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    const reqId = Math.random().toString(36).substring(7);
+    const maxRetries = 3;
+    let attempt = 0;
+    const delays = [1000, 2000, 4000];
 
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Gemini API error (${res.status}): ${errText}`);
+    while (attempt <= maxRetries) {
+      try {
+        console.log(`[LlmService] [req-${reqId}] Calling Gemini API (Attempt ${attempt + 1}/${maxRetries + 1})...`);
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error(`[LlmService] [req-${reqId}] Gemini API error (${res.status}): ${errText}`);
+          
+          // Transient errors
+          if (res.status >= 500 || res.status === 429) {
+            throw new GeminiApiError(res.status, errText);
+          }
+          
+          // Non-transient errors (4xx) throw immediately without retry
+          throw new GeminiApiError(res.status, errText);
+        }
+
+        const data = (await res.json()) as any;
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        if (!text) {
+          console.warn(`[LlmService] [req-${reqId}] Gemini API returned empty completion. Data: ${JSON.stringify(data)}`);
+          throw new GeminiEmptyResponseError();
+        }
+
+        console.log(`[LlmService] [req-${reqId}] Gemini API call successful.`);
+        return text;
+      } catch (err: any) {
+        if (err.name !== "GeminiApiError" && err.name !== "TypeError" && err.name !== "FetchError") {
+          // If it's a structural error (like empty response) or unknown error, don't retry unless it's a network error
+          if (err instanceof GeminiEmptyResponseError) {
+             throw err; // don't retry empty response, as it might be a prompt rejection
+          }
+        }
+        
+        // Let's refine retry condition: only retry for 5xx/429 or network errors
+        const isTransientHttp = err instanceof GeminiApiError && (err.statusCode >= 500 || err.statusCode === 429);
+        const isNetworkError = err.name === "TypeError" || err.name === "FetchError";
+        
+        if (!isTransientHttp && !isNetworkError) {
+           throw err; // throw immediately for non-transient
+        }
+
+        if (attempt >= maxRetries) {
+          console.error(`[LlmService] [req-${reqId}] Max retries reached. Failing.`);
+          throw err;
+        }
+
+        const delay = delays[attempt];
+        console.log(`[LlmService] [req-${reqId}] Transient error caught. Retrying in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        attempt++;
+      }
     }
-
-    const data = (await res.json()) as any;
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) {
-      throw new Error("Gemini API returned an empty completion response.");
-    }
-
-    return text;
+    
+    throw new Error("Unexpected end of retry loop");
   }
 
   private async callDeepseek(messages: Message[]): Promise<string> {
