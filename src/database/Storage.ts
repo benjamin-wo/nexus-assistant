@@ -327,7 +327,7 @@ export class StorageService implements IStorage {
     if (this.isPostgres && this.pgPool) {
       const res = await this.pgPool.query(
         "INSERT INTO reminders (chat_id, message, due_at, sent) VALUES ($1, $2, $3, $4) RETURNING id",
-        [reminder.chatId, reminder.message, dueStr, reminder.sent ? 1 : 0]
+        [reminder.chatId, reminder.message, dueStr, reminder.sent ? true : false]
       );
       return res.rows[0].id;
     } else if (this.sqliteDb) {
