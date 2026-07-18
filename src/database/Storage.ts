@@ -116,7 +116,11 @@ export class StorageService implements IStorage {
   constructor() {
     const dbUrl = process.env.DATABASE_URL;
     if (dbUrl && dbUrl.trim() !== "") {
-      this.pgPool = new pg.Pool({ connectionString: dbUrl });
+      const isLocalhost = dbUrl.includes("localhost") || dbUrl.includes("127.0.0.1");
+      this.pgPool = new pg.Pool({ 
+        connectionString: dbUrl,
+        ...(!isLocalhost && { ssl: { rejectUnauthorized: false } })
+      });
       this.isPostgres = true;
     } else {
       this.sqliteDb = new Database("assistant.db");
