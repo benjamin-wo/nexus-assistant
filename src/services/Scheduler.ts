@@ -25,6 +25,8 @@ export class Scheduler {
 
   async triggerAutoRepair(chatId: string, threadId: number | undefined, workerName: string, bot: any) {
     const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    try {
+      const { WorkerAgent } = require("../core/WorkerAgent");
       const { StorageService } = require("../database/Storage");
       const storage = new StorageService();
       await storage.initialize();
