@@ -32,9 +32,9 @@ Nexus Assistant splits the cognitive layer (prompts, rules, and skills) from the
 - **Orchestrator (`src/core/Orchestrator.ts`)**: The coordinator. It evaluates user messages against `.agent/orchestrator.md` and routes queries by outputting a `<spawn>workerName</spawn>` tag, or replies directly.
 - **Workers (`src/core/WorkerAgent.ts`)**: Spawned sub-agents loaded with focused profiles from `.agent/agents/` (e.g. `financialPlanner.md`, `searchNews.md`, `calendarManager.md`). They run ReAct loops executing specific subsets of skills.
 
-### 2. Dynamic Skill Registry & Self-Evolution
-- **Skill Registry (`src/core/SkillRegistry.ts`)**: Scans `.agent/skills/` folders. It parses `SKILL.md` frontmatter parameter schemas and dynamically imports `handler.ts` modules.
-- **Self-Evolution (`.agent/skills/createSkill/`)**: A meta-skill that generates new tool directories at runtime, runs syntax compiling checks (`Bun.build`), and triggers in-memory cache hot-reloading (`reload()`).
+### 2. Dynamic Skill Registry & Self-Evolution (Database-Backed)
+- **Skill Registry (`src/core/SkillRegistry.ts`)**: Loads and transpiles code dynamically from the `runtime_skills` PostgreSQL database table using `Bun.Transpiler()`. This ensures compatibility with ephemeral cloud filesystems.
+- **Self-Evolution (`.agent/skills/createSkill/`)**: A meta-skill that generates new tools at runtime, performs syntax checks, and inserts the capability directly into the database runtime layer.
 
 ### 3. Asynchronous & Non-Blocking Concurrency
 - **Task Registry (`src/core/TaskRegistry.ts`)**: Spawns long-running tasks (e.g. crawls or calculations) as background Promises and returns an immediate receipt. 

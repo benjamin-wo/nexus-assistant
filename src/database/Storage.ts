@@ -62,6 +62,15 @@ export interface ResearchNote {
   createdAt?: Date;
 }
 
+export interface RuntimeSkill {
+  id?: number;
+  name: string;
+  description: string;
+  paramSchema: any;
+  code: string;
+  updatedAt?: Date;
+}
+
 export interface IStorage {
   initialize(): Promise<void>;
   saveMessage(chatId: string, message: Message): Promise<void>;
@@ -87,6 +96,15 @@ export interface IStorage {
   saveGoogleCredentials(chatId: string, credentials: GoogleCredentials): Promise<void>;
   getGoogleCredentials(chatId: string): Promise<GoogleCredentials | null>;
   getAllGoogleCredentials(): Promise<{chatId: string, credentials: GoogleCredentials}[]>;
+  getSkills(): Promise<RuntimeSkill[]>;
+  getSkill(name: string): Promise<RuntimeSkill | null>;
+  insertSkill(name: string, description: string, paramSchema: any, code: string): Promise<void>;
+  getThreadAssignment(threadId: number): Promise<string | null>;
+  setThreadAssignment(threadId: number, workerName: string): Promise<void>;
+  getProfileValue(key: string): Promise<any>;
+  setProfileValue(key: string, value: any): Promise<void>;
+  logEpisodicMemory(sessionId: string, interactionType: string, content: string): Promise<void>;
+  checkAndSeedSkills(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -176,6 +194,36 @@ export class StorageService implements IStorage {
             refresh_token TEXT NOT NULL,
             expiry_date BIGINT NOT NULL
           );
+
+          CREATE TABLE IF NOT EXISTS runtime_skills (
+              id SERIAL PRIMARY KEY,
+              name VARCHAR(100) UNIQUE NOT NULL,
+              description TEXT NOT NULL,
+              param_schema JSONB NOT NULL,
+              code TEXT NOT NULL,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE TABLE IF NOT EXISTS thread_assignments (
+              thread_id BIGINT PRIMARY KEY,
+              worker_name VARCHAR(100) NOT NULL,
+              pinned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE TABLE IF NOT EXISTS user_profile (
+              id SERIAL PRIMARY KEY,
+              key VARCHAR(255) UNIQUE NOT NULL,
+              value JSONB NOT NULL,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE TABLE IF NOT EXISTS episodic_memory (
+              id SERIAL PRIMARY KEY,
+              session_id VARCHAR(255), 
+              interaction_type VARCHAR(50),
+              content TEXT NOT NULL,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
         `);
       } finally {
         client.release();
@@ -262,6 +310,44 @@ export class StorageService implements IStorage {
           access_token TEXT NOT NULL,
           refresh_token TEXT NOT NULL,
           expiry_date INTEGER NOT NULL
+        );
+      `);
+
+      this.sqliteDb.run(`
+        CREATE TABLE IF NOT EXISTS runtime_skills (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name VARCHAR(100) UNIQUE NOT NULL,
+            description TEXT NOT NULL,
+            param_schema TEXT NOT NULL,
+            code TEXT NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      this.sqliteDb.run(`
+        CREATE TABLE IF NOT EXISTS thread_assignments (
+            thread_id INTEGER PRIMARY KEY,
+            worker_name VARCHAR(100) NOT NULL,
+            pinned_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      this.sqliteDb.run(`
+        CREATE TABLE IF NOT EXISTS user_profile (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key VARCHAR(255) UNIQUE NOT NULL,
+            value TEXT NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      this.sqliteDb.run(`
+        CREATE TABLE IF NOT EXISTS episodic_memory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id VARCHAR(255), 
+            interaction_type VARCHAR(50),
+            content TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
       `);
     }
@@ -795,4 +881,195 @@ export class StorageService implements IStorage {
       this.sqliteDb.close();
     }
   }
+
+  async getSkills(): Promise<RuntimeSkill[]> {
+    if (this.isPostgres && this.pgPool) {
+      const res = await this.pgPool.query("SELECT * FROM runtime_skills");
+      return res.rows.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        paramSchema: typeof r.param_schema === "string" ? JSON.parse(r.param_schema) : r.param_schema,
+        code: r.code,
+        updatedAt: new Date(r.updated_at)
+      }));
+    } else if (this.sqliteDb) {
+      const rows = this.sqliteDb.prepare("SELECT * FROM runtime_skills").all() as any[];
+      return rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        paramSchema: JSON.parse(r.param_schema),
+        code: r.code,
+        updatedAt: new Date(r.updated_at)
+      }));
+    }
+    return [];
+  }
+
+  async getSkill(name: string): Promise<RuntimeSkill | null> {
+    if (this.isPostgres && this.pgPool) {
+      const res = await this.pgPool.query("SELECT * FROM runtime_skills WHERE name = $1", [name]);
+      if (res.rows.length === 0) return null;
+      const r = res.rows[0];
+      return {
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        paramSchema: typeof r.param_schema === "string" ? JSON.parse(r.param_schema) : r.param_schema,
+        code: r.code,
+        updatedAt: new Date(r.updated_at)
+      };
+    } else if (this.sqliteDb) {
+      const r = this.sqliteDb.prepare("SELECT * FROM runtime_skills WHERE name = ?").get(name) as any;
+      if (!r) return null;
+      return {
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        paramSchema: JSON.parse(r.param_schema),
+        code: r.code,
+        updatedAt: new Date(r.updated_at)
+      };
+    }
+    return null;
+  }
+
+  async insertSkill(name: string, description: string, paramSchema: any, code: string): Promise<void> {
+    const schemaStr = JSON.stringify(paramSchema);
+    if (this.isPostgres && this.pgPool) {
+      await this.pgPool.query(
+        `INSERT INTO runtime_skills (name, description, param_schema, code) 
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (name) DO UPDATE 
+         SET description = EXCLUDED.description, param_schema = EXCLUDED.param_schema, code = EXCLUDED.code, updated_at = CURRENT_TIMESTAMP`,
+        [name, description, schemaStr, code]
+      );
+    } else if (this.sqliteDb) {
+      this.sqliteDb.prepare(
+        `INSERT INTO runtime_skills (name, description, param_schema, code) 
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(name) DO UPDATE SET 
+         description = excluded.description, param_schema = excluded.param_schema, code = excluded.code, updated_at = CURRENT_TIMESTAMP`
+      ).run(name, description, schemaStr, code);
+    }
+  }
+
+  async getThreadAssignment(threadId: number): Promise<string | null> {
+    if (this.isPostgres && this.pgPool) {
+      const res = await this.pgPool.query("SELECT worker_name FROM thread_assignments WHERE thread_id = $1", [threadId]);
+      if (res.rows.length === 0) return null;
+      return res.rows[0].worker_name;
+    } else if (this.sqliteDb) {
+      const r = this.sqliteDb.prepare("SELECT worker_name FROM thread_assignments WHERE thread_id = ?").get(threadId) as any;
+      if (!r) return null;
+      return r.worker_name;
+    }
+    return null;
+  }
+
+  async setThreadAssignment(threadId: number, workerName: string): Promise<void> {
+    if (this.isPostgres && this.pgPool) {
+      await this.pgPool.query(
+        `INSERT INTO thread_assignments (thread_id, worker_name) VALUES ($1, $2)
+         ON CONFLICT (thread_id) DO UPDATE SET worker_name = EXCLUDED.worker_name, pinned_at = CURRENT_TIMESTAMP`,
+        [threadId, workerName]
+      );
+    } else if (this.sqliteDb) {
+      this.sqliteDb.prepare(
+        `INSERT INTO thread_assignments (thread_id, worker_name) VALUES (?, ?)
+         ON CONFLICT(thread_id) DO UPDATE SET worker_name = excluded.worker_name, pinned_at = CURRENT_TIMESTAMP`
+      ).run(threadId, workerName);
+    }
+  }
+
+  async getProfileValue(key: string): Promise<any> {
+    if (this.isPostgres && this.pgPool) {
+      const res = await this.pgPool.query("SELECT value FROM user_profile WHERE key = $1", [key]);
+      if (res.rows.length === 0) return null;
+      return typeof res.rows[0].value === "string" ? JSON.parse(res.rows[0].value) : res.rows[0].value;
+    } else if (this.sqliteDb) {
+      const r = this.sqliteDb.prepare("SELECT value FROM user_profile WHERE key = ?").get(key) as any;
+      if (!r) return null;
+      return JSON.parse(r.value);
+    }
+    return null;
+  }
+
+  async setProfileValue(key: string, value: any): Promise<void> {
+    const valStr = JSON.stringify(value);
+    if (this.isPostgres && this.pgPool) {
+      await this.pgPool.query(
+        `INSERT INTO user_profile (key, value) VALUES ($1, $2)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
+        [key, valStr]
+      );
+    } else if (this.sqliteDb) {
+      this.sqliteDb.prepare(
+        `INSERT INTO user_profile (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`
+      ).run(key, valStr);
+    }
+  }
+
+  async logEpisodicMemory(sessionId: string, interactionType: string, content: string): Promise<void> {
+    if (this.isPostgres && this.pgPool) {
+      await this.pgPool.query(
+        "INSERT INTO episodic_memory (session_id, interaction_type, content) VALUES ($1, $2, $3)",
+        [sessionId, interactionType, content]
+      );
+    } else if (this.sqliteDb) {
+      this.sqliteDb.prepare(
+        "INSERT INTO episodic_memory (session_id, interaction_type, content) VALUES (?, ?, ?)"
+      ).run(sessionId, interactionType, content);
+    }
+  }
+
+  async checkAndSeedSkills(): Promise<void> {
+    const fs = require("fs");
+    const path = require("path");
+    const YAML = require("yaml");
+
+    const skills = await this.getSkills();
+    if (skills.length > 0) return; // Already seeded
+
+    const skillsDir = path.join(process.cwd(), ".agent", "skills");
+    if (!fs.existsSync(skillsDir)) return;
+
+    const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+
+      const skillName = entry.name;
+      const mdPath = path.join(skillsDir, skillName, "SKILL.md");
+      const tsPath = path.join(skillsDir, skillName, "handler.ts");
+
+      if (!fs.existsSync(mdPath) || !fs.existsSync(tsPath)) continue;
+
+      try {
+        const mdText = fs.readFileSync(mdPath, "utf-8");
+        const match = mdText.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+        
+        if (!match) {
+          console.log(`[Storage] Failed to extract frontmatter for '${skillName}'`);
+          continue;
+        }
+
+        const frontmatterStr = match[1];
+        const frontmatter = YAML.parse(frontmatterStr);
+
+        const name = frontmatter.name || skillName;
+        const description = frontmatter.description || "";
+        const parameters = frontmatter.parameters || { type: "object", properties: {} };
+        const code = fs.readFileSync(tsPath, "utf-8");
+
+        await this.insertSkill(name, description, parameters, code);
+        console.log(`[Storage] Seeded skill '${name}' into database.`);
+      } catch (err: any) {
+        console.error(`[Storage] Failed to seed skill '${skillName}':`, err.message);
+      }
+    }
+  }
+
 }

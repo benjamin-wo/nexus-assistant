@@ -125,21 +125,61 @@ async function main() {
     return `http://localhost:3000?chatId=${chatId}`;
   }
 
-  // 4a. Handle /cancel <taskId> to stop a running tracking session
+  // 4a. Handle /cancel <taskId> to stop a running tracking session and Admin Commands
   bot.on("message", async (ctx, next) => {
     const text = (ctx.message.text || "").trim();
+    const threadId = ctx.message.message_thread_id;
+    const chatId = String(ctx.chat.id);
+
     if (text.startsWith("/cancel ")) {
       const taskId = text.split(" ")[1]?.trim();
       if (taskId) {
         const cancelled = await TaskRegistry.getInstance().cancelTask(taskId);
         if (cancelled) {
-          await ctx.reply(`✅ Tracking session <code>${taskId}</code> has been stopped.`, { parse_mode: "HTML" });
+          await ctx.reply(`✅ Tracking session <code>${taskId}</code> has been stopped.`, { parse_mode: "HTML", message_thread_id: threadId });
         } else {
-          await ctx.reply(`⚠️ No active task found with ID <code>${taskId}</code>.`, { parse_mode: "HTML" });
+          await ctx.reply(`⚠️ No active task found with ID <code>${taskId}</code>.`, { parse_mode: "HTML", message_thread_id: threadId });
         }
-        return; // Don't forward to main handler
+        return; 
       }
     }
+
+    if (text.startsWith("/assign ")) {
+      const workerName = text.split(" ")[1]?.trim();
+      if (workerName && threadId) {
+        const storage = new StorageService();
+        await storage.initialize();
+        await storage.setThreadAssignment(threadId, workerName);
+        await storage.close();
+        await ctx.reply(`✅ Thread mapped to worker: <code>${workerName}</code>.`, { parse_mode: "HTML", message_thread_id: threadId });
+      } else {
+        await ctx.reply(`⚠️ Usage: /assign [worker_name] (must be inside a topic)`, { message_thread_id: threadId });
+      }
+      return;
+    }
+
+    if (text === "/set_devops_thread") {
+      if (threadId) {
+        const storage = new StorageService();
+        await storage.initialize();
+        await storage.setProfileValue("DEVOPS_THREAD_ID", threadId);
+        await storage.close();
+        await ctx.reply(`✅ This thread has been set as the global DevOps Sandbox.`, { message_thread_id: threadId });
+      } else {
+        await ctx.reply(`⚠️ You must run this inside a topic thread.`);
+      }
+      return;
+    }
+
+    if (text.includes("🚨 **MANUAL_BUG_REPORT**")) {
+       const storage = new StorageService();
+       await storage.initialize();
+       await storage.logEpisodicMemory(chatId, "crash_telemetry", text);
+       await storage.close();
+       await ctx.reply("✅ Bug report intercepted and logged for DevOps analysis.", { message_thread_id: threadId });
+       return;
+    }
+
     return next();
   });
 
@@ -208,10 +248,12 @@ Output format MUST be EXACTLY:
     if (isExpenses) {
       const url = getWebAppUrl(chatId);
       const isHttps = url.startsWith("https://");
+      const threadId = ctx.message.message_thread_id;
       
       if (isHttps) {
         await ctx.reply("Here is your <b>Personal Expense Tracker</b> dashboard:", {
           parse_mode: "HTML",
+          message_thread_id: threadId,
           reply_markup: {
             inline_keyboard: [[
               { text: "📊 Open Expense Dashboard", web_app: { url } }
@@ -220,7 +262,8 @@ Output format MUST be EXACTLY:
         });
       } else {
         await ctx.reply(`Here is your <b>Personal Expense Tracker</b> dashboard link:\n\n<a href="${url}">📊 Open Expense Dashboard</a>\n\n(Local testing link: <code>${url}</code>)`, {
-          parse_mode: "HTML"
+          parse_mode: "HTML",
+          message_thread_id: threadId
         });
       }
       return;
@@ -229,10 +272,12 @@ Output format MUST be EXACTLY:
     if (isNotes) {
       const url = `${getWebAppUrl(chatId)}&tab=notes`;
       const isHttps = url.startsWith("https://");
+      const threadId = ctx.message.message_thread_id;
       
       if (isHttps) {
         await ctx.reply("Here is your <b>Research Notes</b> library:", {
           parse_mode: "HTML",
+          message_thread_id: threadId,
           reply_markup: {
             inline_keyboard: [[
               { text: "📝 Open Research Notes", web_app: { url } }
@@ -241,7 +286,8 @@ Output format MUST be EXACTLY:
         });
       } else {
         await ctx.reply(`Here is your <b>Research Notes</b> library link:\n\n<a href="${url}">📝 Open Research Notes</a>\n\n(Local testing link: <code>${url}</code>)`, {
-          parse_mode: "HTML"
+          parse_mode: "HTML",
+          message_thread_id: threadId
         });
       }
       return;
@@ -308,10 +354,35 @@ Output format MUST be EXACTLY:
     await ctx.replyWithChatAction("typing");
 
     try {
-      const response = await orchestrator.processMessage(chatId, text, media);
-      await ctx.reply(markdownToHtml(response), { parse_mode: "HTML" });
+      const threadId = ctx.message.message_thread_id;
+      const response = await orchestrator.processMessage(chatId, text, media, threadId);
+      await ctx.reply(markdownToHtml(response), { parse_mode: "HTML", message_thread_id: threadId });
     } catch (err: any) {
+      const threadId = ctx.message.message_thread_id;
       console.error(`[Telegram Message Error] Chat: ${chatId}`, err);
+      
+      if (err.message && err.message.startsWith("WorkerCrash::")) {
+         const parts = err.message.split("::");
+         const devopsThreadId = parts[1];
+         const workerName = parts[2];
+         const lastInput = parts[3];
+         const stackTrace = parts[4];
+         
+         const payload = `🚨 **Crash Detected in ${workerName}**\n\n**Input:** ${lastInput}\n\n**Trace:**\n<code>${escapeHtml(stackTrace.substring(0, 500))}...</code>`;
+         
+         await bot.api.sendMessage(chatId, markdownToHtml(payload), {
+             parse_mode: "HTML",
+             message_thread_id: Number(devopsThreadId),
+             reply_markup: {
+                 inline_keyboard: [[
+                     { text: "🛠️ Auto-Repair (DevOps)", callback_data: `action:autorepair:${workerName}` }
+                 ]]
+             }
+         });
+         await ctx.reply("❌ An unexpected error occurred. The DevOps team has been notified.", { message_thread_id: threadId });
+         return;
+      }
+      
       try {
         await storage.logEvent({
           category: "TELEGRAM_MESSAGE_ERROR",
@@ -322,7 +393,36 @@ Output format MUST be EXACTLY:
       } catch (dbErr) {
         console.error("Failed to log error to DB:", dbErr);
       }
-      await ctx.reply(`❌ An execution error occurred: ${err.message}`);
+      await ctx.reply(`❌ An execution error occurred: ${err.message}`, { message_thread_id: threadId });
+    }
+  });
+
+  bot.on("callback_query:data", async (ctx) => {
+    const data = ctx.callbackQuery.data;
+    if (data.startsWith("action:autorepair:")) {
+       await ctx.answerCallbackQuery({ text: "Spawning DevOps Agent..." });
+       const workerName = data.split(":")[2];
+       if (scheduler.triggerAutoRepair) {
+           scheduler.triggerAutoRepair(String(ctx.chat?.id), ctx.callbackQuery.message?.message_thread_id, workerName, bot);
+       }
+    } else if (data.startsWith("action:approve_patch:")) {
+       await ctx.answerCallbackQuery({ text: "Applying patch..." });
+       const skillName = data.split(":")[2];
+       
+       const storage = new StorageService();
+       await storage.initialize();
+       const pendingPatch = await storage.getProfileValue(`PATCH_PENDING_${skillName}`);
+       if (pendingPatch) {
+          const { code, description, paramSchema } = pendingPatch;
+          await storage.insertSkill(skillName, description, paramSchema, code);
+          const registry = SkillRegistry.getInstance();
+          await registry.reload();
+          await ctx.editMessageText(`✅ Patch applied successfully for skill: ${skillName}. Registry reloaded.`, { parse_mode: "HTML" });
+          await storage.setProfileValue(`PATCH_PENDING_${skillName}`, null);
+       } else {
+          await ctx.sendMessage("⚠️ Patch data not found or expired.");
+       }
+       await storage.close();
     }
   });
 

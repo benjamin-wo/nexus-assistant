@@ -6,7 +6,8 @@ parameters:
   properties:
     duration:
       type: string
-      description: You can pass an absolute ISO date string OR a relative time (e.g. `5 minutes`).
+      description: |
+        You can pass an absolute ISO date string OR a relative time (e.g. `5 minutes`).
         If using relative time, it accepts format: `[number] [unit]`, where unit is `s`, `m`, `h`, `d`.
 
         Examples of `duration`:

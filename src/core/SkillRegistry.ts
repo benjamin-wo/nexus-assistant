@@ -34,49 +34,39 @@ export class SkillRegistry {
 
   async reload(): Promise<void> {
     this.skills.clear();
-    if (!existsSync(this.skillsDir)) {
-      return;
-    }
 
-    const entries = await readdir(this.skillsDir, { withFileTypes: true });
+    const { StorageService } = await import("../database/Storage");
+    const storage = new StorageService();
+    await storage.initialize();
+    await storage.checkAndSeedSkills();
 
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+    const dbSkills = await storage.getSkills();
 
-      const skillName = entry.name;
-      const skillFolder = join(this.skillsDir, skillName);
-      const mdPath = join(skillFolder, "SKILL.md");
-      const tsPath = join(skillFolder, "handler.ts");
-
-      if (!existsSync(mdPath) || !existsSync(tsPath)) {
-        console.warn(`[SkillRegistry] Skipping incomplete skill folder: ${skillName}`);
-        continue;
-      }
-
+    for (const skill of dbSkills) {
       try {
-        // 1. Read and parse SKILL.md frontmatter
-        const mdText = await readFile(mdPath, "utf-8");
-        const match = mdText.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+        const name = skill.name;
+        const description = skill.description;
+        const parameters = skill.paramSchema;
+        const code = skill.code;
 
-        if (!match) {
-          console.warn(`[SkillRegistry] Invalid SKILL.md format in: ${skillName}`);
-          continue;
-        }
-
-        const frontmatterStr = match[1];
-        const instructions = match[2].trim();
-        const frontmatter = YAML.parse(frontmatterStr);
-
-        const name = frontmatter.name || skillName;
-        const description = frontmatter.description || "";
-        const parameters = frontmatter.parameters || { type: "object", properties: {} };
-
-        // 2. Dynamic import handler with cache-busting query parameter
-        const importPath = `${tsPath}?t=${Date.now()}`;
-        const handlerModule = await import(importPath);
+        // Write to cache file because Bun's import() rejects long data URIs with NameTooLong
+        const { writeFileSync, mkdirSync } = await import("fs");
+        const { join } = await import("path");
+        const cacheDir = join(process.cwd(), ".agent", "cache");
+        try { mkdirSync(cacheDir, { recursive: true }); } catch (e) {}
+        const tmpFile = join(cacheDir, `${name}_${Date.now()}.js`);
+        
+        // Fix relative paths for the new location (.agent/cache is 2 levels deep, not 3)
+        let fixedCode = code.replace(/(['"])\.\.\/\.\.\/\.\.\/src\//g, "$1../../src/");
+        const transpiler = new Bun.Transpiler({ loader: "ts" });
+        const transpiled = transpiler.transformSync(fixedCode);
+        writeFileSync(tmpFile, transpiled);
+        
+        // Execute in-memory runtime hook
+        const handlerModule = await import(tmpFile);
 
         if (typeof handlerModule.execute !== "function") {
-          console.warn(`[SkillRegistry] handler.ts in '${skillName}' must export a function named 'execute'.`);
+          console.warn(`[SkillRegistry] handler code for '${name}' must export a function named 'execute'.`);
           continue;
         }
 
@@ -84,14 +74,16 @@ export class SkillRegistry {
           name,
           description,
           parameters,
-          instructions,
-          handlerPath: tsPath,
+          instructions: "", // Legacy instructions can be injected here if schema supports it
+          handlerPath: `db://${name}`,
           execute: handlerModule.execute,
         });
       } catch (error: any) {
-        console.error(`[SkillRegistry] Failed to load skill '${skillName}':`, error.message);
+        console.error(`[SkillRegistry] Failed to load skill '${skill.name}':`, error.message);
       }
     }
+    
+    await storage.close();
   }
 
   getSkills(): Skill[] {

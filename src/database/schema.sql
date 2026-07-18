@@ -115,3 +115,37 @@
 --   content TEXT NOT NULL,
 --   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 -- );
+
+-- 7. Dynamic Runtime Tooling Layer
+-- CREATE TABLE IF NOT EXISTS runtime_skills (
+--     id SERIAL PRIMARY KEY,
+--     name VARCHAR(100) UNIQUE NOT NULL,
+--     description TEXT NOT NULL,
+--     param_schema JSONB NOT NULL,
+--     code TEXT NOT NULL,
+--     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- );
+
+-- 8. Thread-to-Worker Routing Matrix
+-- CREATE TABLE IF NOT EXISTS thread_assignments (
+--     thread_id BIGINT PRIMARY KEY,
+--     worker_name VARCHAR(100) NOT NULL,
+--     pinned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- );
+
+-- 9. Long-Term Semantic User Attributes
+-- CREATE TABLE IF NOT EXISTS user_profile (
+--     id SERIAL PRIMARY KEY,
+--     key VARCHAR(255) UNIQUE NOT NULL,
+--     value JSONB NOT NULL,
+--     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- );
+
+-- 10. Episodic Action Ledger & Audit Logs
+-- CREATE TABLE IF NOT EXISTS episodic_memory (
+--     id SERIAL PRIMARY KEY,
+--     session_id VARCHAR(255), 
+--     interaction_type VARCHAR(50),
+--     content TEXT NOT NULL,
+--     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- );

@@ -15,7 +15,7 @@ export class Orchestrator {
     this.llmService = new LlmService();
   }
 
-  async processMessage(chatId: string, userText: string, media?: MediaAttachment[]): Promise<string> {
+  async processMessage(chatId: string, userText: string, media?: MediaAttachment[], threadId?: number): Promise<string> {
     const storage = new StorageService();
     await storage.initialize();
 
@@ -73,28 +73,40 @@ export class Orchestrator {
         { role: "user", content: userText, media },
       ];
 
-      // 3. Load Router Instructions
-      const routerPath = join(process.cwd(), ".agent", "orchestrator.md");
-      if (!existsSync(routerPath)) {
-        throw new Error("Orchestrator instruction profile (.agent/orchestrator.md) is missing.");
+      // 3. Evaluate Thread Context Routing Matrix
+      let workerName: string | null = null;
+      if (threadId) {
+        workerName = await storage.getThreadAssignment(threadId);
       }
-      const routerInstructions = await readFile(routerPath, "utf-8");
-      const routerInstructionsWithContext = `${routerInstructions}${soulPrompt}${userMemory}${agentRules}`;
 
-      // Prepend router instructions to system prompt
-      const classificationMessages: Message[] = [
-        { role: "system", content: routerInstructionsWithContext },
-        ...tempHistory,
-      ];
+      if (workerName) {
+        console.log(`[Orchestrator] Bypassing classification, routing to assigned worker: ${workerName}`);
+      } else {
+        // Fallback to LLM Classification Master Router
+        const routerPath = join(process.cwd(), ".agent", "orchestrator.md");
+        if (!existsSync(routerPath)) {
+          throw new Error("Orchestrator instruction profile (.agent/orchestrator.md) is missing.");
+        }
+        const routerInstructions = await readFile(routerPath, "utf-8");
+        const routerInstructionsWithContext = `${routerInstructions}${soulPrompt}${userMemory}${agentRules}`;
 
-      console.log("[Orchestrator] Routing user request...");
-      const routeResponse = await this.llmService.generateResponse(classificationMessages);
+        const classificationMessages: Message[] = [
+          { role: "system", content: routerInstructionsWithContext },
+          ...tempHistory,
+        ];
 
-      // Check if routing requires spawning a subagent
-      const spawnMatch = routeResponse.match(/<spawn>([a-zA-Z0-9]+)<\/spawn>/i);
+        console.log("[Orchestrator] Routing user request...");
+        const routeResponse = await this.llmService.generateResponse(classificationMessages);
+        const spawnMatch = routeResponse.match(/<spawn>([a-zA-Z0-9]+)<\/spawn>/i);
 
-      if (spawnMatch) {
-        const workerName = spawnMatch[1];
+        if (spawnMatch) {
+          workerName = spawnMatch[1];
+        } else {
+          finalResponse = routeResponse.replace(/<spawn>.*?<\/spawn>/gi, "").trim();
+        }
+      }
+
+      if (workerName) {
         console.log(`[Orchestrator] Spawning worker: ${workerName}`);
 
         // 4. Load Worker Profile and allowed skills
@@ -104,7 +116,6 @@ export class Orchestrator {
         }
         const workerMd = await readFile(workerPath, "utf-8");
 
-        // Simple markdown bullet parser to extract allowed skills list
         const skillsSection = workerMd.match(/## Available Skills\r?\n([\s\S]*?)(?:\r?\n##|$)/i);
         const allowedSkills: string[] = [];
         if (skillsSection) {
@@ -119,15 +130,10 @@ export class Orchestrator {
 
         Logger.info(`[Orchestrator] Allowed skills parsed for ${workerName}:`, allowedSkills);
 
-        // Prepend soul, user memory, and agents rules to worker instructions so they carry over
         const workerInstructionsWithContext = `${workerMd}${soulPrompt}${userMemory}${agentRules}`;
 
-        // Instantiate and run Worker
         const worker = new WorkerAgent(workerName, workerInstructionsWithContext, allowedSkills);
         finalResponse = await worker.execute(history.concat({ role: "user", content: userText, media }), chatId);
-      } else {
-        // Direct response from Router (greetings, direct answers, errors)
-        finalResponse = routeResponse.replace(/<spawn>.*?<\/spawn>/gi, "").trim();
       }
 
       // 5. Commit conversations to history

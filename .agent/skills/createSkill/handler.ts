@@ -1,7 +1,5 @@
-import { join } from "path";
-import { mkdir, writeFile } from "fs/promises";
 import { SkillRegistry } from "../../../src/core/SkillRegistry";
-import YAML from "yaml";
+import { StorageService } from "../../../src/database/Storage";
 
 export async function execute(args: {
   name: string;
@@ -16,64 +14,31 @@ export async function execute(args: {
     throw new Error("Skill name must be alphanumeric (letters, numbers, underscores only).");
   }
 
-  const skillDir = join(process.cwd(), ".agent", "skills", name);
-  await mkdir(skillDir, { recursive: true });
-
-  // Generate SKILL.md content
-  const frontmatter = {
-    name,
-    description,
-    parameters,
-  };
-  const skillMdContent = `---
-${YAML.stringify(frontmatter)}---
-${instructions}
-`;
-
-  const mdPath = join(skillDir, "SKILL.md");
-  const tsPath = join(skillDir, "handler.ts");
-
-  // Write temporary files to verify compilation
-  await writeFile(mdPath, skillMdContent, "utf-8");
-  await writeFile(tsPath, codeContent, "utf-8");
+  try {
+    // 1. Verify compilation using Transpiler
+    const transpiler = new Bun.Transpiler({ loader: "ts" });
+    transpiler.transformSync(codeContent); // Throws if syntax is invalid
+  } catch (error: any) {
+    throw new Error(`TypeScript compilation failed: ${error.message}`);
+  }
 
   try {
-    // Compile-check using Bun.build
-    const buildResult = await Bun.build({
-      entrypoints: [tsPath],
-      minify: false,
-    });
+    // 2. Insert directly into Database
+    const storage = new StorageService();
+    await storage.initialize(); // Ensure db is ready
+    
+    // Convert parameters to JSON string or leave as object based on how StorageService handles it
+    // Actually insertSkill accepts object/string for parameters.
+    await storage.insertSkill(name, description, JSON.stringify(parameters), codeContent);
 
-    if (!buildResult.success) {
-      const logMsg = buildResult.logs.map((log) => `${log.level}: ${log.message}`).join("\n");
-      throw new Error(`TypeScript compilation failed:\n${logMsg}`);
-    }
-
-    // Trigger dynamic reload of capabilities
+    // 3. Trigger dynamic reload of capabilities
     await SkillRegistry.getInstance().reload();
-
-    let gitMessage = "Local capability only (ephemeral).";
-    try {
-      const { $ } = await import("bun");
-      // Add the skill directory
-      await $`git add ${skillDir}`;
-      // Stage agent profile updates if they were modified
-      await $`git add ${join(process.cwd(), ".agent", "agents")}`;
-      // Commit and push
-      await $`git commit -m "feat(agent): dynamically evolved skill '${name}' at runtime"`;
-      await $`git push origin main`;
-      gitMessage = "Skill successfully committed and pushed to GitHub repository!";
-    } catch (gitErr: any) {
-      gitMessage = `Loaded in memory, but failed to commit/push to Git: ${gitErr.message.trim()}`;
-    }
 
     return {
       success: true,
-      message: `Skill '${name}' has been successfully created, verified, and loaded at runtime! (${gitMessage})`,
-      path: skillDir,
+      message: `Skill '${name}' has been successfully verified and loaded directly into the database runtime!`,
     };
   } catch (error: any) {
-    // If compilation fails, do not leave broken files on disk or at least report it
     throw new Error(`Failed to create skill '${name}': ${error.message}`);
   }
 }
