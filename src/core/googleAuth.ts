@@ -21,7 +21,7 @@ export async function getAccessToken(chatId: string): Promise<string> {
     const credentials = await storage.getGoogleCredentials(chatId);
     if (!credentials) {
       const authUrl = getGoogleAuthUrl(chatId);
-      throw new Error(`NOT_AUTHENTICATED: Please authorize Google access first by visiting: ${authUrl}`);
+      throw new Error(`NOT_AUTHENTICATED: ${authUrl}`);
     }
 
     const now = Date.now();
