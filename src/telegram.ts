@@ -36,17 +36,20 @@ function markdownToHtml(markdown: string): string {
     return `@@@PLACEHOLDER${placeholders.length - 1}@@@`;
   });
 
-  // 4. Bold: **bold** -> <b>bold</b> (enforce non-space inner boundaries, no nested asterisks)
+  // 4. Links: [text](url) -> <a href="$2">$1</a> (Extract URLs to placeholders to protect from italic underscores)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+    placeholders.push(url);
+    return `<a href="@@@PLACEHOLDER${placeholders.length - 1}@@@">${text}</a>`;
+  });
+
+  // 5. Bold: **bold** -> <b>bold</b> (enforce non-space inner boundaries, no nested asterisks)
   html = html.replace(/(?<!\*)\*\*(?!\*)(?=\S)([\s\S]*?)(?<=\S)\*\*(?!\*)/g, "<b>$1</b>");
  
-  // 5. Italic: *italic* -> <i>italic</i> (enforce non-space boundaries to avoid matching bullet points)
+  // 6. Italic: *italic* -> <i>italic</i> (enforce non-space boundaries to avoid matching bullet points)
   html = html.replace(/(?<!\*)\*(?!\*)(?=\S)([\s\S]*?)(?<=\S)\*(?!\*)/g, "<i>$1</i>");
  
-  // 6. Italic: _italic_ -> <i>italic</i>
+  // 7. Italic: _italic_ -> <i>italic</i>
   html = html.replace(/(?<!_)_(?!_)(?=\S)([\s\S]*?)(?<=\S)_(?!_)/g, "<i>$1</i>");
- 
-  // 7. Links: [text](url) -> <a href="$2">$1</a>
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
  
   // 8. Restore placeholders (use function replacement to avoid $ capturing issues)
   for (let i = 0; i < placeholders.length; i++) {
