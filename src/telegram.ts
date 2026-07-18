@@ -27,13 +27,13 @@ function markdownToHtml(markdown: string): string {
       lines.shift();
     }
     placeholders.push(`<pre><code>${lines.join("\n").trim()}</code></pre>`);
-    return `%%PLACEHOLDER_${placeholders.length - 1}%%`;
+    return `@@@PLACEHOLDER${placeholders.length - 1}@@@`;
   });
 
   // 3. Inline code: `code` -> <code>code</code>
   html = html.replace(/`([^`]+)`/g, (match, code) => {
     placeholders.push(`<code>${code}</code>`);
-    return `%%PLACEHOLDER_${placeholders.length - 1}%%`;
+    return `@@@PLACEHOLDER${placeholders.length - 1}@@@`;
   });
 
   // 4. Bold: **bold** -> <b>bold</b> (enforce non-space inner boundaries, no nested asterisks)
@@ -48,9 +48,9 @@ function markdownToHtml(markdown: string): string {
   // 7. Links: [text](url) -> <a href="$2">$1</a>
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
  
-  // 8. Restore placeholders
+  // 8. Restore placeholders (use function replacement to avoid $ capturing issues)
   for (let i = 0; i < placeholders.length; i++) {
-    html = html.replace(`%%PLACEHOLDER_${i}%%`, placeholders[i]);
+    html = html.replace(`@@@PLACEHOLDER${i}@@@`, () => placeholders[i]);
   }
 
   return html;
