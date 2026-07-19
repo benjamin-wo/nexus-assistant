@@ -423,7 +423,7 @@ Output format MUST be EXACTLY:
           await ctx.editMessageText(`✅ Patch applied successfully for skill: ${skillName}. Registry reloaded.`, { parse_mode: "HTML" });
           await storage.setProfileValue(`PATCH_PENDING_${skillName}`, null);
        } else {
-          await ctx.sendMessage("⚠️ Patch data not found or expired.");
+          await ctx.reply("⚠️ Patch data not found or expired.");
        }
        await storage.close();
     }
