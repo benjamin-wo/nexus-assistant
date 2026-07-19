@@ -259,7 +259,7 @@ Output format MUST be EXACTLY:
           message_thread_id: threadId,
           reply_markup: {
             inline_keyboard: [[
-              { text: "📊 Open Expense Dashboard", web_app: { url } }
+              { text: "📊 Open Expense Dashboard", url: url }
             ]]
           }
         });
@@ -283,7 +283,7 @@ Output format MUST be EXACTLY:
           message_thread_id: threadId,
           reply_markup: {
             inline_keyboard: [[
-              { text: "📝 Open Research Notes", web_app: { url } }
+              { text: "📝 Open Research Notes", url: url }
             ]]
           }
         });
