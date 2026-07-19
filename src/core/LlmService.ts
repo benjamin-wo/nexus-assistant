@@ -4,12 +4,14 @@ import { Logger } from "./Logger";
 
 export class LlmService {
   private provider: string;
+  private customModel?: string;
   private geminiKey: string;
   private deepseekKey: string;
   private openrouterKey: string;
 
-  constructor() {
-    this.provider = (process.env.LLM_PROVIDER || "gemini").toLowerCase();
+  constructor(customProvider?: string, customModel?: string) {
+    this.provider = (customProvider || process.env.LLM_PROVIDER || "gemini").toLowerCase();
+    this.customModel = customModel;
     this.geminiKey = process.env.GEMINI_API_KEY || "";
     this.deepseekKey = process.env.DEEPSEEK_API_KEY || "";
     this.openrouterKey = process.env.OPENROUTER_API_KEY || "";
@@ -64,7 +66,7 @@ export class LlmService {
   }
 
   private async callGemini(messages: Message[]): Promise<string> {
-    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    const model = this.customModel || process.env.GEMINI_MODEL || "gemini-2.5-flash";
     if (!this.geminiKey) {
       throw new Error("GEMINI_API_KEY is not configured in environment variables.");
     }
@@ -189,7 +191,7 @@ export class LlmService {
   }
 
   private async callDeepseek(messages: Message[]): Promise<string> {
-    const model = process.env.DEEPSEEK_MODEL || "deepseek-chat";
+    const model = this.customModel || process.env.DEEPSEEK_MODEL || "deepseek-chat";
     if (!this.deepseekKey) {
       throw new Error("DEEPSEEK_API_KEY is not configured in environment variables.");
     }
@@ -203,7 +205,7 @@ export class LlmService {
   }
 
   private async callOpenrouter(messages: Message[]): Promise<string> {
-    const model = process.env.OPENROUTER_MODEL || "nousresearch/hermes-3-llama-3-8b";
+    const model = this.customModel || process.env.OPENROUTER_MODEL || "nousresearch/hermes-3-llama-3-8b";
     if (!this.openrouterKey) {
       throw new Error("OPENROUTER_API_KEY is not configured in environment variables.");
     }

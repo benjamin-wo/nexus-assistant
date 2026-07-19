@@ -54,6 +54,17 @@ export interface Expense {
   createdAt?: Date | string;
 }
 
+export interface PendingExpense {
+  id?: number;
+  chatId: string;
+  amount: number | null;
+  category: string | null;
+  description: string | null;
+  paymentMode: string | null;
+  rawData?: string;
+  createdAt?: Date | string;
+}
+
 export interface ResearchNote {
   id?: number;
   chatId: string;
@@ -90,6 +101,9 @@ export interface IStorage {
   createExpense(expense: Expense): Promise<number>;
   getExpenses(chatId: string): Promise<Expense[]>;
   deleteExpense(id: number, chatId: string): Promise<void>;
+  createPendingExpense(expense: PendingExpense): Promise<number>;
+  getPendingExpense(id: number): Promise<PendingExpense | null>;
+  deletePendingExpense(id: number): Promise<void>;
   createResearchNote(note: ResearchNote): Promise<number>;
   getResearchNotes(chatId: string): Promise<ResearchNote[]>;
   deleteResearchNote(id: number, chatId: string): Promise<void>;
@@ -181,6 +195,17 @@ export class StorageService implements IStorage {
             amount DOUBLE PRECISION NOT NULL,
             category TEXT NOT NULL,
             description TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE TABLE IF NOT EXISTS pending_expenses (
+            id SERIAL PRIMARY KEY,
+            chat_id TEXT NOT NULL,
+            amount DOUBLE PRECISION,
+            category TEXT,
+            description TEXT,
+            payment_mode TEXT,
+            raw_data TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           );
 
@@ -294,6 +319,19 @@ export class StorageService implements IStorage {
           amount REAL NOT NULL,
           category TEXT NOT NULL,
           description TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      this.sqliteDb.run(`
+        CREATE TABLE IF NOT EXISTS pending_expenses (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          chat_id TEXT NOT NULL,
+          amount REAL,
+          category TEXT,
+          description TEXT,
+          payment_mode TEXT,
+          raw_data TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
       `);
@@ -736,6 +774,77 @@ export class StorageService implements IStorage {
       this.sqliteDb
         .prepare("DELETE FROM expenses WHERE id = ? AND chat_id = ?")
         .run(id, chatId);
+    }
+  }
+
+  async createPendingExpense(expense: PendingExpense): Promise<number> {
+    const createdStr = expense.createdAt 
+      ? (expense.createdAt instanceof Date ? expense.createdAt.toISOString() : new Date(expense.createdAt).toISOString())
+      : new Date().toISOString();
+
+    if (this.isPostgres && this.pgPool) {
+      const res = await this.pgPool.query(
+        "INSERT INTO pending_expenses (chat_id, amount, category, description, payment_mode, raw_data, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
+        [expense.chatId, expense.amount, expense.category, expense.description, expense.paymentMode, expense.rawData || null, createdStr]
+      );
+      return res.rows[0].id;
+    } else if (this.sqliteDb) {
+      const res = this.sqliteDb
+        .prepare(
+          "INSERT INTO pending_expenses (chat_id, amount, category, description, payment_mode, raw_data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id"
+        )
+        .get(expense.chatId, expense.amount, expense.category, expense.description, expense.paymentMode, expense.rawData || null, createdStr) as any;
+      return res.id;
+    }
+    return 0;
+  }
+
+  async getPendingExpense(id: number): Promise<PendingExpense | null> {
+    if (this.isPostgres && this.pgPool) {
+      const res = await this.pgPool.query(
+        "SELECT id, chat_id, amount, category, description, payment_mode, raw_data, created_at FROM pending_expenses WHERE id = $1",
+        [id]
+      );
+      if (res.rows.length === 0) return null;
+      const row = res.rows[0];
+      return {
+        id: row.id,
+        chatId: row.chat_id,
+        amount: row.amount !== null ? Number(row.amount) : null,
+        category: row.category,
+        description: row.description,
+        paymentMode: row.payment_mode,
+        rawData: row.raw_data,
+        createdAt: new Date(row.created_at),
+      };
+    } else if (this.sqliteDb) {
+      const row = this.sqliteDb
+        .prepare(
+          "SELECT id, chat_id, amount, category, description, payment_mode, raw_data, created_at FROM pending_expenses WHERE id = ?"
+        )
+        .get(id) as any;
+      if (!row) return null;
+      return {
+        id: row.id,
+        chatId: row.chat_id,
+        amount: row.amount !== null ? Number(row.amount) : null,
+        category: row.category,
+        description: row.description,
+        paymentMode: row.payment_mode,
+        rawData: row.raw_data,
+        createdAt: new Date(row.created_at),
+      };
+    }
+    return null;
+  }
+
+  async deletePendingExpense(id: number): Promise<void> {
+    if (this.isPostgres && this.pgPool) {
+      await this.pgPool.query("DELETE FROM pending_expenses WHERE id = $1", [id]);
+    } else if (this.sqliteDb) {
+      this.sqliteDb
+        .prepare("DELETE FROM pending_expenses WHERE id = ?")
+        .run(id);
     }
   }
 

@@ -174,6 +174,19 @@ async function main() {
       return;
     }
 
+    if (text === "/set_pm_thread") {
+      if (threadId) {
+        const storage = new StorageService();
+        await storage.initialize();
+        await storage.setProfileValue("PM_THREAD_ID", threadId);
+        await storage.close();
+        await ctx.reply(`✅ This thread has been set as the global Bugs and Improvements PM topic.`, { message_thread_id: threadId });
+      } else {
+        await ctx.reply(`⚠️ You must run this inside a topic thread.`);
+      }
+      return;
+    }
+
     if (text.includes("🚨 **MANUAL_BUG_REPORT**")) {
        const storage = new StorageService();
        await storage.initialize();
@@ -373,15 +386,30 @@ Output format MUST be EXACTLY:
          
          const payload = `🚨 **Crash Detected in ${workerName}**\n\n**Input:** ${lastInput}\n\n**Trace:**\n<code>${escapeHtml(stackTrace.substring(0, 500))}...</code>`;
          
-         await bot.api.sendMessage(chatId, markdownToHtml(payload), {
-             parse_mode: "HTML",
-             message_thread_id: Number(devopsThreadId),
-             reply_markup: {
-                 inline_keyboard: [[
-                     { text: "🛠️ Auto-Repair (DevOps)", callback_data: `action:autorepair:${workerName}` }
-                 ]]
-             }
-         });
+         if (devopsThreadId) {
+             await bot.api.sendMessage(chatId, markdownToHtml(payload), {
+                 parse_mode: "HTML",
+                 message_thread_id: Number(devopsThreadId),
+                 reply_markup: {
+                     inline_keyboard: [[
+                         { text: "🛠️ Auto-Repair (DevOps)", callback_data: `action:autorepair:${workerName}` }
+                     ]]
+                 }
+             });
+         }
+         
+         const storage = new StorageService();
+         await storage.initialize();
+         const pmThreadId = await storage.getProfileValue("PM_THREAD_ID");
+         await storage.close();
+         
+         if (pmThreadId && pmThreadId !== devopsThreadId) {
+             await bot.api.sendMessage(chatId, markdownToHtml(`🚨 **Bug Report (Crash):**\n\nWorker: ${workerName}\nInput: ${lastInput}\n\nTrace:\n<code>${escapeHtml(stackTrace.substring(0, 500))}...</code>`), {
+                 parse_mode: "HTML",
+                 message_thread_id: Number(pmThreadId)
+             });
+         }
+         
          await ctx.reply("❌ An unexpected error occurred. The DevOps team has been notified.", { message_thread_id: threadId });
          return;
       }
@@ -426,6 +454,51 @@ Output format MUST be EXACTLY:
           await ctx.reply("⚠️ Patch data not found or expired.");
        }
        await storage.close();
+    } else if (data.startsWith("log_yes:")) {
+      const pendingId = parseInt(data.split(":")[1]);
+      await ctx.answerCallbackQuery({ text: "Logging expense..." });
+      
+      const storage = new StorageService();
+      await storage.initialize();
+      const pending = await storage.getPendingExpense(pendingId);
+      if (pending) {
+        if (pending.amount === null || !pending.description || !pending.category) {
+          await ctx.reply("⚠️ Cannot log expense, missing required fields. Please edit details.");
+        } else {
+          await storage.createExpense({
+            chatId: pending.chatId,
+            amount: pending.amount,
+            category: pending.category,
+            description: pending.description,
+            createdAt: pending.createdAt
+          });
+          await storage.deletePendingExpense(pendingId);
+          await ctx.editMessageText(
+            ctx.callbackQuery.message?.text + `\n\n✅ **Logged to Database!**`,
+            { parse_mode: "Markdown" }
+          );
+        }
+      } else {
+        await ctx.editMessageText("⚠️ Pending expense not found. It may have already been logged or discarded.");
+      }
+      await storage.close();
+    } else if (data.startsWith("log_no:")) {
+      const pendingId = parseInt(data.split(":")[1]);
+      await ctx.answerCallbackQuery({ text: "Discarding expense..." });
+      
+      const storage = new StorageService();
+      await storage.initialize();
+      await storage.deletePendingExpense(pendingId);
+      await ctx.editMessageText(
+        ctx.callbackQuery.message?.text + `\n\n❌ **Discarded!**`,
+        { parse_mode: "Markdown" }
+      );
+      await storage.close();
+    } else if (data.startsWith("log_edit:")) {
+      const pendingId = parseInt(data.split(":")[1]);
+      await ctx.answerCallbackQuery({ text: "Preparing edit..." });
+      // Ask user to use normal chat for now, or you can implement a conversation flow
+      await ctx.reply(`To edit this expense, please type a message to me explaining the changes you want to make, e.g. "Set the amount to $15 for the pending expense at McDonald's".`);
     }
   });
 
@@ -433,6 +506,8 @@ Output format MUST be EXACTLY:
   bot.catch(async (err) => {
     console.error("[Telegram Global Bot Error]", err.error);
     try {
+      const storage = new StorageService();
+      await storage.initialize();
       const errorObj = err.error instanceof Error ? err.error : new Error(String(err.error));
       await storage.logEvent({
         category: "TELEGRAM_GLOBAL_ERROR",
@@ -440,6 +515,18 @@ Output format MUST be EXACTLY:
         details: errorObj.stack || JSON.stringify(err.error),
         isError: true
       });
+      const pmThreadId = await storage.getProfileValue("PM_THREAD_ID");
+      if (pmThreadId) {
+          // Attempt to extract chatId from ctx, default to log failure if unavailable
+          const chatId = err.ctx.chat?.id;
+          if (chatId) {
+              await bot.api.sendMessage(chatId, markdownToHtml(`🚨 **Global Bot Error:**\n\nMessage: ${errorObj.message}\n\nTrace:\n<code>${escapeHtml((errorObj.stack || "").substring(0, 500))}...</code>`), {
+                  parse_mode: "HTML",
+                  message_thread_id: Number(pmThreadId)
+              });
+          }
+      }
+      await storage.close();
     } catch (dbErr) {
       console.error("Failed to log global error to DB:", dbErr);
     }
@@ -629,7 +716,7 @@ Output format MUST be EXACTLY:
   console.log(`[Telegram] Web Server started on port ${port}`);
   
   // 7. Start the Email Poller background loop (every 15 minutes)
-  startEmailPoller(15 * 60 * 1000);
+  startEmailPoller(bot, 15 * 60 * 1000);
 
   console.log("[Telegram] Bot starting...");
   await bot.start();

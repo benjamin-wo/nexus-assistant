@@ -13,7 +13,18 @@ export class WorkerAgent {
     this.name = name;
     this.systemPrompt = systemPrompt;
     this.allowedSkills = allowedSkills;
-    this.llmService = new LlmService();
+    
+    let customProvider: string | undefined;
+    let customModel: string | undefined;
+    const frontmatterMatch = systemPrompt.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (frontmatterMatch) {
+      const frontmatter = frontmatterMatch[1];
+      const providerMatch = frontmatter.match(/^provider:\s*([^\r\n]+)/m);
+      const modelMatch = frontmatter.match(/^model:\s*([^\r\n]+)/m);
+      if (providerMatch) customProvider = providerMatch[1].trim();
+      if (modelMatch) customModel = modelMatch[1].trim();
+    }
+    this.llmService = new LlmService(customProvider, customModel);
   }
 
   async execute(chatHistory: Message[], chatId: string): Promise<string> {
@@ -187,10 +198,11 @@ Format requirements:
       await storage.logEpisodicMemory(chatId, "crash_telemetry", crashPayload);
       
       const devopsThreadId = await storage.getProfileValue("DEVOPS_THREAD_ID");
+      const pmThreadId = await storage.getProfileValue("PM_THREAD_ID");
       await storage.close();
       
-      if (devopsThreadId) {
-          throw new Error(`WorkerCrash::${devopsThreadId}::${this.name}::${lastInput}::${stackTrace}`);
+      if (devopsThreadId || pmThreadId) {
+          throw new Error(`WorkerCrash::${devopsThreadId || ""}::${this.name}::${lastInput}::${stackTrace}`);
       }
 
       return "❌ An unexpected error occurred while processing your request. The issue has been logged.";

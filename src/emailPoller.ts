@@ -1,4 +1,5 @@
 import { StorageService, GoogleCredentials } from "./database/Storage";
+import { Bot, InlineKeyboard } from "grammy";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
@@ -91,23 +92,41 @@ function getEmailBody(payload: any): string {
   return body;
 }
 
-async function extractExpense(content: string, subject: string): Promise<{amount: number, category: string, description: string} | null> {
-  const prompt = `
-You are an expense extraction agent. Below is the subject and text of an email. 
-Check if this email represents a transaction, receipt, or invoice.
-If it does, extract the total amount, category, and a short description.
-If it is NOT a valid receipt or if the amount is missing/0, return {"error": "Not an expense"}.
-
-Return ONLY valid JSON matching this schema:
-{
-  "amount": 12.50,
-  "category": "Food",
-  "description": "Lunch at McDonald's"
+function stripHtmlTags(html: string): string {
+  let text = html.replace(/<style[^>]*>.*?<\/style>/gi, '');
+  text = text.replace(/<script[^>]*>.*?<\/script>/gi, '');
+  text = text.replace(/<[^>]+>/g, ' ');
+  return text.replace(/\s+/g, ' ').trim();
 }
 
-Email Subject: ${subject}
+async function extractExpense(content: string, subject: string, fromHeader: string): Promise<any> {
+  const prompt = `
+You are an assistant that analyzes email content to determine if it is a financial receipt/transaction alert, and extracts details.
+First, determine if the email is a financial receipt, invoice, order confirmation, bank/wallet transaction alert, payment confirmation, or utility bill.
+Only classify it as a receipt/transaction if it documents a completed or pending financial payment, purchase, or money transfer.
 
-Email Text:
+Email Metadata:
+- From: ${fromHeader}
+- Subject: ${subject}
+
+Extract the following details from this email:
+- is_receipt (boolean: true if it is a financial receipt or transaction alert, false otherwise)
+- amount (number only, or null if not found or is_receipt is false)
+- description: Infer the clean, recognizable name of the merchant, shop, service, or product. If ambiguous, set to null.
+- category: Categorize the expense (e.g. Food, Shopping, Transfer, Transport, Groceries, Health, Subscription, Travel, Utilities, etc). If completely unsure, output null.
+- payment_mode: Map the credit card or payment wallet by applying these rules strictly:
+  * If it is a UOB email and the transaction references card ending in "6405", output: "UOB Krisflyer"
+  * If it is a UOB email and the transaction references card ending in "5184", output: "UOB Visa Signature"
+  * If it is a DBS/POSB transaction alert (but NOT a DBS PayLah! wallet alert), output: "DBS Womens"
+  * If it is a DBS PayLah! wallet alert (e.g., from paylah.alert@dbs.com), output: "PayLah!"
+  * If it is a Citibank email, output: "CitiBank Rewards"
+  * If it is a HSBC email, output: "HSBC Revolution"
+  * If none of the above rules match but you are certain it is a credit card transaction, output: "Credit Card"
+  * Otherwise, output null.
+
+Format your response STRICTLY as a JSON object with keys: "is_receipt", "amount", "description", "category", "payment_mode".
+
+Email body:
 ${content}
 `;
 
@@ -132,32 +151,29 @@ ${content}
   const data = await response.json();
   const text = data.choices[0].message.content;
   try {
-    const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/{[\s\S]*?}/);
+    const jsonMatch = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || text.match(/{[\s\S]*?}/);
     const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : text;
     const parsed = JSON.parse(jsonStr);
     
-    if (parsed.error || !parsed.amount) {
-      return null;
-    }
-    return {
-      amount: Number(parsed.amount),
-      category: parsed.category || "Uncategorized",
-      description: parsed.description || "Unknown Expense"
-    };
+    return parsed;
   } catch (err) {
     console.error("[EmailPoller] Failed to parse LLM response:", err);
     return null;
   }
 }
 
-async function processUser(chatId: string, credentials: GoogleCredentials, storage: StorageService) {
+async function processUser(chatId: string, credentials: GoogleCredentials, storage: StorageService, bot?: Bot) {
   try {
     const accessToken = await refreshGoogleToken(credentials, chatId, storage);
     const labelId = await getOrCreateLabel(accessToken);
     
     // search for unlabeled expense emails
-    const query = `-label:${LABEL_NAME} (invoice OR receipt OR transaction OR payment OR order)`;
-    const searchRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=5`, {
+    // SGT timezone offset (UTC+8)
+    const yesterday = new Date(Date.now() - 86400000 + (8 * 3600000));
+    const yStr = `${yesterday.getFullYear()}/${(yesterday.getMonth() + 1).toString().padStart(2, '0')}/${yesterday.getDate().toString().padStart(2, '0')}`;
+    
+    const queryStr = `is:unread -label:${LABEL_NAME} after:${yStr} ((from:alerts@citibank.com.sg "charge" "transaction" "made" -due) OR (from:paylah.alert@dbs.com "Amount" "Transaction") OR (from:unialerts@uobgroup.com "transaction") OR (from:hsbc.bank.singapore.limited@notification.hsbc.com.hk subject:"Transaction Alerts" "Transaction" "Amount") OR (from:ibanking.alert@dbs.com subject:"Card Transaction Alert"))`;
+    const searchRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(queryStr)}&maxResults=5`, {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
     
@@ -175,27 +191,72 @@ async function processUser(chatId: string, credentials: GoogleCredentials, stora
       });
       const msgData = await msgRes.json();
       
-      const subjectHeader = msgData.payload.headers.find((h: any) => h.name.toLowerCase() === 'subject');
+      const headers = msgData.payload.headers;
+      const subjectHeader = headers.find((h: any) => h.name.toLowerCase() === 'subject');
       const subject = subjectHeader ? subjectHeader.value : "No Subject";
       
+      const fromHeaderItem = headers.find((h: any) => h.name.toLowerCase() === 'from');
+      const fromHeader = fromHeaderItem ? fromHeaderItem.value : "Unknown";
+
       console.log(`[EmailPoller] Processing message ${msg.id} ("${subject}")`);
       
       // try to extract full body, fallback to snippet
       let textBody = getEmailBody(msgData.payload);
       if (!textBody || textBody.trim().length === 0) {
         textBody = msgData.snippet || "";
+      } else {
+        textBody = stripHtmlTags(textBody);
       }
       
-      const expense = await extractExpense(textBody.substring(0, 4000), subject); // limit to 4000 chars to save tokens
+      const parsed = await extractExpense(textBody.substring(0, 4000), subject, fromHeader); // limit to 4000 chars to save tokens
       
-      if (expense) {
-        console.log(`[EmailPoller] Logged expense: $${expense.amount} for ${expense.description}`);
-        await storage.createExpense({
+      if (parsed && parsed.is_receipt) {
+        console.log(`[EmailPoller] Found receipt: $${parsed.amount} for ${parsed.description}`);
+        const pendingId = await storage.createPendingExpense({
           chatId,
-          amount: expense.amount,
-          category: expense.category,
-          description: expense.description
+          amount: parsed.amount !== undefined ? Number(parsed.amount) : null,
+          category: parsed.category || null,
+          description: parsed.description || null,
+          paymentMode: parsed.payment_mode || null
         });
+
+        if (bot) {
+          const amountStr = parsed.amount !== null && parsed.amount !== undefined ? `$${parsed.amount}` : "[Missing]";
+          const descStr = parsed.description || "[Missing]";
+          const catStr = parsed.category || "[Missing]";
+          const payStr = parsed.payment_mode || "[Missing]";
+          
+          let msgText = `📧 **New Receipt Found!**\n\n`;
+          msgText += `• **Amount:** ${amountStr}\n`;
+          msgText += `• **Desc:** ${descStr}\n`;
+          msgText += `• **Category:** ${catStr}\n`;
+          msgText += `• **Payment:** ${payStr}\n\n`;
+          
+          const missing = [];
+          if (!parsed.amount) missing.push("Amount");
+          if (!parsed.description) missing.push("Description");
+          if (!parsed.category) missing.push("Category");
+          if (!parsed.payment_mode) missing.push("Payment Mode");
+
+          let keyboard = new InlineKeyboard();
+          if (missing.length > 0) {
+            msgText += `Please provide the missing details (e.g. ${missing.join(", ")}) so I can log this expense.`;
+            keyboard.text("❌ Discard", `log_no:${pendingId}`)
+                    .text("✏️ Complete details", `log_edit:${pendingId}`);
+          } else {
+            msgText += `Should I log this?`;
+            keyboard.text("✅ Yes, log it", `log_yes:${pendingId}`)
+                    .text("❌ Discard", `log_no:${pendingId}`)
+                    .row()
+                    .text("✏️ Edit details", `log_edit:${pendingId}`);
+          }
+
+          try {
+            await bot.api.sendMessage(chatId, msgText, { parse_mode: "Markdown", reply_markup: keyboard });
+          } catch (e) {
+            console.error(`[EmailPoller] Error sending Telegram message to ${chatId}:`, e);
+          }
+        }
       } else {
         console.log(`[EmailPoller] Not an expense or un-parseable.`);
       }
@@ -225,7 +286,7 @@ async function processUser(chatId: string, credentials: GoogleCredentials, stora
   }
 }
 
-export async function pollEmails() {
+export async function pollEmails(bot?: Bot) {
   console.log("[EmailPoller] Starting poll cycle...");
   const storage = new StorageService();
   await storage.initialize();
@@ -234,22 +295,22 @@ export async function pollEmails() {
   console.log(`[EmailPoller] Found ${allCreds.length} users with Google Credentials.`);
 
   for (const { chatId, credentials } of allCreds) {
-    await processUser(chatId, credentials, storage);
+    await processUser(chatId, credentials, storage, bot);
   }
 
   await storage.close();
   console.log("[EmailPoller] Cycle complete.");
 }
 
-export function startEmailPoller(intervalMs: number = 15 * 60 * 1000) {
+export function startEmailPoller(bot?: Bot, intervalMs: number = 15 * 60 * 1000) {
   console.log(`[EmailPoller] Initialized to run every ${intervalMs / 60000} minutes.`);
   
   // Run once immediately
-  pollEmails().catch(console.error);
+  pollEmails(bot).catch(console.error);
 
   // Set up the interval
   setInterval(() => {
-    pollEmails().catch(console.error);
+    pollEmails(bot).catch(console.error);
   }, intervalMs);
 }
 
