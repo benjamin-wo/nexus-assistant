@@ -252,7 +252,12 @@ async function processUser(chatId: string, credentials: GoogleCredentials, stora
           }
 
           try {
-            await bot.api.sendMessage(chatId, msgText, { parse_mode: "Markdown", reply_markup: keyboard });
+            const financeThreadId = await storage.getProfileValue("FINANCE_THREAD_ID");
+            const opts: any = { parse_mode: "Markdown", reply_markup: keyboard };
+            if (financeThreadId) {
+                opts.message_thread_id = Number(financeThreadId);
+            }
+            await bot.api.sendMessage(chatId, msgText, opts);
           } catch (e) {
             console.error(`[EmailPoller] Error sending Telegram message to ${chatId}:`, e);
           }

@@ -187,6 +187,19 @@ async function main() {
       return;
     }
 
+    if (text === "/set_finance_thread") {
+      if (threadId) {
+        const storage = new StorageService();
+        await storage.initialize();
+        await storage.setProfileValue("FINANCE_THREAD_ID", threadId);
+        await storage.close();
+        await ctx.reply(`✅ This thread has been set as the Finance topic for expense polling alerts.`, { message_thread_id: threadId });
+      } else {
+        await ctx.reply(`⚠️ You must run this inside a topic thread.`);
+      }
+      return;
+    }
+
     if (text.includes("🚨 **MANUAL_BUG_REPORT**")) {
        const storage = new StorageService();
        await storage.initialize();
