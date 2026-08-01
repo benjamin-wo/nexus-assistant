@@ -585,127 +585,136 @@ Please update the missing or changed values and save this expense to the databas
   });
 
   bot.on("callback_query:data", async (ctx) => {
-    const data = ctx.callbackQuery.data;
-    if (data.startsWith("action:autorepair:")) {
-       await ctx.answerCallbackQuery({ text: "Spawning DevOps Agent..." });
-       const workerName = data.split(":")[2];
-       if (scheduler.triggerAutoRepair) {
-           scheduler.triggerAutoRepair(String(ctx.chat?.id), ctx.callbackQuery.message?.message_thread_id, workerName, bot);
-       }
-    } else if (data.startsWith("action:approve_patch:")) {
-       await ctx.answerCallbackQuery({ text: "Applying patch..." });
-       const skillName = data.split(":")[2];
-       
-       const storage = new StorageService();
-       await storage.initialize();
-       const pendingPatch = await storage.getProfileValue(`PATCH_PENDING_${skillName}`);
-       if (pendingPatch) {
-          const { code, description, paramSchema } = pendingPatch;
-          await storage.insertSkill(skillName, description, paramSchema, code);
-          const registry = SkillRegistry.getInstance();
-          await registry.reload();
-          await ctx.editMessageText(`✅ Patch applied successfully for skill: ${skillName}. Registry reloaded.`, { parse_mode: "HTML" });
-          await storage.setProfileValue(`PATCH_PENDING_${skillName}`, null);
-       } else {
-          await ctx.reply("⚠️ Patch data not found or expired.");
-       }
-    } else if (data.startsWith("action:approve_skillopt:")) {
-       await ctx.answerCallbackQuery({ text: "Applying SkillOpt optimization..." });
-       const skillName = data.split(":")[2];
-       const storage = new StorageService();
-       await storage.initialize();
-       const pendingOpt = await storage.getProfileValue(`SKILLOPT_PENDING_${skillName}`);
-       if (pendingOpt) {
-          const { optimizedPrompt } = pendingOpt;
-          const skillPath = join(process.cwd(), ".agent", "skills", skillName, "SKILL.md");
-          await Bun.write(skillPath, optimizedPrompt);
-          const registry = SkillRegistry.getInstance();
-          await registry.reload();
-          await ctx.editMessageText(`🤖 ✅ <b>SkillOpt Prompt Updated:</b> <code>${skillName}</code>. SkillRegistry reloaded.`, { parse_mode: "HTML" });
-          await storage.setProfileValue(`SKILLOPT_PENDING_${skillName}`, null);
-       } else {
-          await ctx.reply("⚠️ SkillOpt optimization data not found or expired.");
-       }
-       await storage.close();
-    } else if (data.startsWith("action:settle_reimbursement:")) {
-       const id = parseInt(data.replace("action:settle_reimbursement:", ""));
-       await ctx.answerCallbackQuery({ text: "Marking settled..." });
-       const storage = new StorageService();
-       await storage.initialize();
-       const settled = await storage.settleReimbursement(id);
-       await storage.close();
-       if (settled) {
-          await ctx.editMessageText("🎉 <b>Debt marked as settled!</b>", { parse_mode: "HTML" });
-       } else {
-          await ctx.reply("⚠️ Reimbursement not found or already settled.");
-       }
-    } else if (data.startsWith("action:delete_reminder:")) {
-       const reminderId = parseInt(data.replace("action:delete_reminder:", ""));
-       await ctx.answerCallbackQuery({ text: "Deleting reminder..." });
-       const storage = new StorageService();
-       await storage.initialize();
-       const deleted = await storage.deleteReminder(reminderId);
-       await storage.close();
-       if (deleted) {
-          await ctx.editMessageText("✅ <b>Reminder deleted successfully.</b>", { parse_mode: "HTML" });
-       } else {
-          await ctx.reply("⚠️ Reminder not found or already deleted.");
-       }
-    } else if (data.startsWith("log_yes:")) {
-      const pendingId = parseInt(data.split(":")[1]);
-      await ctx.answerCallbackQuery({ text: "Logging expense..." });
-      
-      const storage = new StorageService();
-      await storage.initialize();
-      const pending = await storage.getPendingExpense(pendingId);
-      if (pending) {
-        if (pending.amount === null || !pending.description || !pending.category) {
-          await ctx.reply("⚠️ Cannot log expense, missing required fields. Please edit details.");
+    try {
+      const data = ctx.callbackQuery.data;
+      const chatId = String(ctx.chat?.id);
+      if (data.startsWith("action:autorepair:")) {
+         await ctx.answerCallbackQuery({ text: "Spawning DevOps Agent..." });
+         const workerName = data.split(":")[2];
+         if (scheduler.triggerAutoRepair) {
+             scheduler.triggerAutoRepair(String(ctx.chat?.id), ctx.callbackQuery.message?.message_thread_id, workerName, bot);
+         }
+      } else if (data.startsWith("action:approve_patch:")) {
+         await ctx.answerCallbackQuery({ text: "Applying patch..." });
+         const skillName = data.split(":")[2];
+         
+         const storage = new StorageService();
+         await storage.initialize();
+         const pendingPatch = await storage.getProfileValue(`PATCH_PENDING_${skillName}`);
+         if (pendingPatch) {
+            const { code, description, paramSchema } = pendingPatch;
+            await storage.insertSkill(skillName, description, paramSchema, code);
+            const registry = SkillRegistry.getInstance();
+            await registry.reload();
+            await ctx.editMessageText(`✅ Patch applied successfully for skill: ${skillName}. Registry reloaded.`, { parse_mode: "HTML" });
+            await storage.setProfileValue(`PATCH_PENDING_${skillName}`, null);
+         } else {
+            await ctx.reply("⚠️ Patch data not found or expired.");
+         }
+      } else if (data.startsWith("action:approve_skillopt:")) {
+         await ctx.answerCallbackQuery({ text: "Applying SkillOpt optimization..." });
+         const skillName = data.split(":")[2];
+         const storage = new StorageService();
+         await storage.initialize();
+         const pendingOpt = await storage.getProfileValue(`SKILLOPT_PENDING_${skillName}`);
+         if (pendingOpt) {
+            const { optimizedPrompt } = pendingOpt;
+            const skillPath = join(process.cwd(), ".agent", "skills", skillName, "SKILL.md");
+            await Bun.write(skillPath, optimizedPrompt);
+            const registry = SkillRegistry.getInstance();
+            await registry.reload();
+            await ctx.editMessageText(`🤖 ✅ <b>SkillOpt Prompt Updated:</b> <code>${skillName}</code>. SkillRegistry reloaded.`, { parse_mode: "HTML" });
+            await storage.setProfileValue(`SKILLOPT_PENDING_${skillName}`, null);
+         } else {
+            await ctx.reply("⚠️ SkillOpt optimization data not found or expired.");
+         }
+         await storage.close();
+      } else if (data.startsWith("action:settle_reimbursement:")) {
+         const id = parseInt(data.replace("action:settle_reimbursement:", ""));
+         await ctx.answerCallbackQuery({ text: "Marking settled..." });
+         const storage = new StorageService();
+         await storage.initialize();
+         const settled = await storage.settleReimbursement(id);
+         await storage.close();
+         if (settled) {
+            await ctx.editMessageText("🎉 <b>Debt marked as settled!</b>", { parse_mode: "HTML" });
+         } else {
+            await ctx.reply("⚠️ Reimbursement not found or already settled.");
+         }
+      } else if (data.startsWith("action:delete_reminder:")) {
+         const reminderId = parseInt(data.replace("action:delete_reminder:", ""));
+         await ctx.answerCallbackQuery({ text: "Deleting reminder..." });
+         const storage = new StorageService();
+         await storage.initialize();
+         const deleted = await storage.deleteReminder(reminderId);
+         await storage.close();
+         if (deleted) {
+            await ctx.editMessageText("✅ <b>Reminder deleted successfully.</b>", { parse_mode: "HTML" });
+         } else {
+            await ctx.reply("⚠️ Reminder not found or already deleted.");
+         }
+      } else if (data.startsWith("log_yes:")) {
+        const pendingId = parseInt(data.split(":")[1]);
+        await ctx.answerCallbackQuery({ text: "Logging expense..." });
+        
+        const storage = new StorageService();
+        await storage.initialize();
+        const pending = await storage.getPendingExpense(pendingId);
+        if (pending) {
+          if (pending.amount === null || !pending.description || !pending.category) {
+            await ctx.reply("⚠️ Cannot log expense, missing required fields. Please edit details.");
+          } else {
+            await storage.createExpense({
+              chatId: pending.chatId,
+              amount: pending.amount,
+              category: pending.category,
+              description: pending.description,
+              createdAt: pending.createdAt
+            });
+            await storage.deletePendingExpense(pendingId);
+            await ctx.editMessageText(
+              ctx.callbackQuery.message?.text + `\n\n✅ **Logged to Database!**`,
+              { parse_mode: "Markdown" }
+            );
+          }
         } else {
-          await storage.createExpense({
-            chatId: pending.chatId,
-            amount: pending.amount,
-            category: pending.category,
-            description: pending.description,
-            createdAt: pending.createdAt
-          });
-          await storage.deletePendingExpense(pendingId);
-          await ctx.editMessageText(
-            ctx.callbackQuery.message?.text + `\n\n✅ **Logged to Database!**`,
-            { parse_mode: "Markdown" }
-          );
+          await ctx.editMessageText("⚠️ Pending expense not found. It may have already been logged or discarded.");
         }
-      } else {
-        await ctx.editMessageText("⚠️ Pending expense not found. It may have already been logged or discarded.");
+        await storage.close();
+      } else if (data.startsWith("log_no:")) {
+        const pendingId = parseInt(data.split(":")[1]);
+        await ctx.answerCallbackQuery({ text: "Discarding expense..." });
+        
+        const storage = new StorageService();
+        await storage.initialize();
+        await storage.deletePendingExpense(pendingId);
+        await ctx.editMessageText(
+          ctx.callbackQuery.message?.text + `\n\n❌ **Discarded!**`,
+          { parse_mode: "Markdown" }
+        );
+        await storage.close();
+      } else if (data.startsWith("log_edit:")) {
+        const pendingId = parseInt(data.split(":")[1]);
+        await ctx.answerCallbackQuery({ text: "Preparing edit..." });
+  
+        const storage = new StorageService();
+        await storage.initialize();
+        await storage.setProfileValue(`ACTIVE_PENDING_EXPENSE_ID_${chatId}`, pendingId);
+        
+        const pending = await storage.getPendingExpense(pendingId);
+        const desc = pending?.description || "this receipt";
+        await storage.close();
+  
+        await ctx.reply(`✏️ **Editing Expense:** "${desc}"\n\nPlease send me the updated or missing details (e.g. "it was $15.50" or "McDonalds"). I will update and log it!`, {
+          reply_markup: { force_reply: true }
+        });
       }
-      await storage.close();
-    } else if (data.startsWith("log_no:")) {
-      const pendingId = parseInt(data.split(":")[1]);
-      await ctx.answerCallbackQuery({ text: "Discarding expense..." });
-      
-      const storage = new StorageService();
-      await storage.initialize();
-      await storage.deletePendingExpense(pendingId);
-      await ctx.editMessageText(
-        ctx.callbackQuery.message?.text + `\n\n❌ **Discarded!**`,
-        { parse_mode: "Markdown" }
-      );
-      await storage.close();
-    } else if (data.startsWith("log_edit:")) {
-      const pendingId = parseInt(data.split(":")[1]);
-      await ctx.answerCallbackQuery({ text: "Preparing edit..." });
-
-      const storage = new StorageService();
-      await storage.initialize();
-      await storage.setProfileValue(`ACTIVE_PENDING_EXPENSE_ID_${chatId}`, pendingId);
-      
-      const pending = await storage.getPendingExpense(pendingId);
-      const desc = pending?.description || "this receipt";
-      await storage.close();
-
-      await ctx.reply(`✏️ **Editing Expense:** "${desc}"\n\nPlease send me the updated or missing details (e.g. "it was $15.50" or "McDonalds"). I will update and log it!`, {
-        reply_markup: { force_reply: true }
-      });
+    } catch (err: any) {
+      if (err.message && err.message.includes("message is not modified")) {
+        console.log("[Telegram] Swallowed harmless duplicate callback query edit message exception.");
+      } else {
+        throw err;
+      }
     }
   });
 
